@@ -160,20 +160,9 @@ export default function App() {
       </nav>
 
       {activeTab === 'observatory' && (
-        <main className="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4 min-h-0">
-          <aside className="lg:col-span-3 flex flex-col gap-6 min-h-0">
-            <ControlPanel 
-              selections={selections}
-              setSelections={setSelections}
-              selectedAiaWavelength={selectedAiaWavelength}
-              setSelectedAiaWavelength={setSelectedAiaWavelength}
-              onEngage={handleEngage}
-              isProcessing={processState === 'processing'}
-            />
-            <StatusFeed messages={statusMessages} />
-          </aside>
-          
-          <div className="lg:col-span-6 flex items-center justify-center">
+        <main className="flex-grow flex flex-col gap-6 mt-4 min-h-0">
+          {/* Top Section for Sun Display */}
+          <section className="flex items-center justify-center">
             <MainDisplay 
               wavelength={selectedAiaWavelength} 
               isProcessing={processState === 'processing'} 
@@ -182,14 +171,30 @@ export default function App() {
               displaySource={displaySource}
               setDisplaySource={setDisplaySource}
             />
-          </div>
+          </section>
 
-          <aside className="lg:col-span-3 min-h-0">
-            <DataDashboard 
-              processState={processState}
-              data={processedData}
-            />
-          </aside>
+          {/* Bottom Section for Panels */}
+          <section className="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+            <aside className="lg:col-span-3 min-h-0">
+               <ControlPanel 
+                selections={selections}
+                setSelections={setSelections}
+                selectedAiaWavelength={selectedAiaWavelength}
+                setSelectedAiaWavelength={setSelectedAiaWavelength}
+                onEngage={handleEngage}
+                isProcessing={processState === 'processing'}
+              />
+            </aside>
+            <aside className="lg:col-span-4 min-h-0">
+              <StatusFeed messages={statusMessages} />
+            </aside>
+            <aside className="lg:col-span-5 min-h-0">
+              <DataDashboard 
+                processState={processState}
+                data={processedData}
+              />
+            </aside>
+          </section>
         </main>
       )}
 
