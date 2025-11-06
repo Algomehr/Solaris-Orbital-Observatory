@@ -1,4 +1,3 @@
-
 export interface InstrumentSelection {
   AIA: boolean;
   HMI: boolean;
@@ -50,4 +49,60 @@ export interface SimulatedData {
   solarWindData?: SolarWindData;
   protonFluxData?: ProtonFluxDataPoint[];
   kpIndexData?: KpIndexData;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+  audioData?: string; // Optional: store base64 audio data for model responses
+}
+
+// Types for SolarForecast component
+export interface ThreatMatrixItem {
+    region: string;
+    magneticClass: string;
+    flareProbability: {
+        C: number;
+        M: number;
+        X: number;
+    };
+    cmeRisk: 'Low' | 'Moderate' | 'High' | 'Very High';
+}
+
+export interface NewsItem {
+    title: string;
+    uri: string;
+    summary: string;
+}
+
+export interface SevenDayForecast {
+    day: string;
+    summary: string;
+    auroraChance: string;
+}
+
+// Types for MissionControl visual dashboard
+export interface DeltaV {
+    insertion: number;
+    stationKeeping: number;
+    returnBurn: number;
+}
+
+export interface TelemetryData {
+    altitude: number;
+    velocity: number;
+    signalStrength: number;
+    temperature: number;
+}
+
+export interface MissionMetrics {
+    deltaV: DeltaV;
+    fuelConsumption: number;
+    maxRadiationExposure: number;
+    telemetry: TelemetryData;
+}
+
+export interface MissionData {
+    log: string;
+    metrics: MissionMetrics | null;
 }

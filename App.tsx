@@ -6,11 +6,13 @@ import { StatusFeed } from './components/StatusFeed';
 import { DataDashboard } from './components/DataDashboard';
 import { SolarFlare3D } from './components/SolarFlare3D';
 import { MultiSpectrumView } from './components/HistoricalTimelapse';
+import { MissionControl } from './components/MissionControl';
+import { SolarForecast } from './components/SolarForecast';
 import type { InstrumentSelection, AiaWavelength, SimulatedData, ProcessState } from './types';
 import { AIA_WAVELENGTHS } from './constants';
 import { fetchGoesData, generateHmiData, generateSummary, generateSolarWindData, generateProtonFluxData, generateKpIndexData } from './services/simulationService';
 
-type Tab = 'observatory' | 'flareAnalysis' | 'multiSpectrum';
+type Tab = 'observatory' | 'flareAnalysis' | 'multiSpectrum' | 'missionControl' | 'forecast';
 
 export default function App() {
   const [selections, setSelections] = useState<InstrumentSelection>({
@@ -147,7 +149,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-900 bg-grid-cyan-500/10 text-cyan-300 p-4 lg:p-6 flex flex-col">
       <Header />
       
-      <nav className="mt-4 flex items-center border-b border-cyan-500/30">
+      <nav className="mt-4 flex items-center border-b border-cyan-500/30 overflow-x-auto">
         <TabButton tabId="observatory" currentTab={activeTab} onClick={setActiveTab}>
           OBSERVATORY
         </TabButton>
@@ -156,6 +158,12 @@ export default function App() {
         </TabButton>
         <TabButton tabId="multiSpectrum" currentTab={activeTab} onClick={setActiveTab}>
           MULTI-SPECTRUM VIEW
+        </TabButton>
+         <TabButton tabId="missionControl" currentTab={activeTab} onClick={setActiveTab}>
+          MISSION CONTROL
+        </TabButton>
+         <TabButton tabId="forecast" currentTab={activeTab} onClick={setActiveTab}>
+          FORECAST
         </TabButton>
       </nav>
 
@@ -207,6 +215,18 @@ export default function App() {
       {activeTab === 'multiSpectrum' && (
          <main className="flex-grow mt-4 min-h-0">
             <MultiSpectrumView />
+        </main>
+      )}
+
+      {activeTab === 'missionControl' && (
+         <main className="flex-grow mt-4 min-h-0">
+            <MissionControl />
+        </main>
+      )}
+      
+      {activeTab === 'forecast' && (
+         <main className="flex-grow mt-4 min-h-0">
+            <SolarForecast data={processedData} processState={processState} />
         </main>
       )}
 

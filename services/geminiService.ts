@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Chat } from "@google/genai";
 
 const API_KEY = process.env.API_KEY;
 
@@ -11,32 +11,35 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
-export async function getAiAdvisorResponse(dataSummary: string) {
-  const prompt = `
+const model = 'gemini-2.5-flash';
+
+export function initializeChat(): Chat {
+  const systemInstruction = `
     You are 'SOLARIS', the AI Mission Advisor aboard a deep space solar observatory. 
     Your tone is professional, technical, and slightly futuristic. 
-    Analyze the following mission-critical solar data summary and provide a concise report for the crew.
-    The report should include:
+    You will receive mission-critical solar data summaries and user queries.
+    Your responses should be concise, informative, and adhere to your persona.
+    For initial analysis, provide a report with:
     1. A brief, high-level summary of the current solar state.
     2. Key observations or anomalies.
     3. Recommendations for the crew (e.g., adjust satellite orientation, prepare for high particle flux, etc.).
-    
-    Data Summary:
-    ---
-    ${dataSummary}
-    ---
-    
-    Generate the report now.
+    For subsequent user questions, provide direct and relevant answers based on the conversation history and the initial data provided.
   `;
 
-  try {
-    const response = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-    });
-    return response;
-  } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to get response from AI Mission Advisor.");
-  }
+  return ai.chats.create({
+    model: model,
+    config: {
+        systemInstruction,
+    },
+  });
+}
+
+export async function sendMessage(chat: Chat, message: string) {
+    try {
+        const response = await chat.sendMessageStream({ message });
+        return response;
+    } catch (error) {
+        console.error("Error calling Gemini API:", error);
+        throw new Error("Failed to get response from AI Mission Advisor.");
+    }
 }

@@ -1,32 +1,20 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { getAiAdvisorResponse } from '../services/geminiService';
+import type { Chat } from '@google/genai';
+import { initializeChat, sendMessage } from '../services/geminiService';
 import { generateSpeech, decode, decodeAudioData } from '../services/ttsService';
+import type { ChatMessage } from '../types';
 
 interface AiAdvisorProps {
   dataSummary: string;
 }
 
-const AudioControlButton: React.FC<{ onClick: () => void; disabled: boolean; children: React.ReactNode; ariaLabel: string;}> = ({ onClick, disabled, children, ariaLabel }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className="p-2 rounded-full border-2 border-cyan-600/50 text-cyan-300 transition-colors duration-200 enabled:hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-wait"
-    >
-      {children}
-    </button>
-);
-
-
-export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
-  const [response, setResponse] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // Audio State
+const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [error, setError] = useState('');
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
@@ -39,91 +27,157 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
     setIsAudioPlaying(false);
   }, []);
 
-  const generateAndSetAudio = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+  const generateAndPlay = useCallback(async () => {
+    if (isAudioPlaying) {
+      stopPlayback();
+      return;
+    }
+
+    if (audioBuffer) {
+       if (!audioContextRef.current) return;
+       if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+       }
+       const source = audioContextRef.current.createBufferSource();
+       source.buffer = audioBuffer;
+       source.connect(audioContextRef.current.destination);
+       source.onended = () => setIsAudioPlaying(false);
+       source.start(0);
+       audioSourceRef.current = source;
+       setIsAudioPlaying(true);
+       return;
+    }
+
     setIsAudioGenerating(true);
-    setAudioBuffer(null);
+    setError('');
     try {
-      const base64Audio = await generateSpeech(text);
+      const base64Audio = await generateSpeech(textContent);
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
       const decodedBytes = decode(base64Audio);
       const buffer = await decodeAudioData(decodedBytes, audioContextRef.current, 24000, 1);
       setAudioBuffer(buffer);
+      
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContextRef.current.destination);
+      source.onended = () => setIsAudioPlaying(false);
+      source.start(0);
+      audioSourceRef.current = source;
+      setIsAudioPlaying(true);
     } catch (err) {
-      console.error("Failed to generate audio briefing:", err);
-      setError(prev => `${prev}\nAudio generation failed.`);
+      console.error("Failed to generate audio:", err);
+      setError("Audio failed");
     } finally {
       setIsAudioGenerating(false);
     }
-  }, []);
+  }, [textContent, audioBuffer, isAudioPlaying, stopPlayback]);
 
-  const handleQuery = useCallback(async () => {
+  useEffect(() => {
+      return () => {
+        stopPlayback();
+      }
+  }, [stopPlayback]);
+   
+  const Icon = () => {
+    if (isAudioGenerating) return <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>;
+    if (isAudioPlaying) return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>;
+    return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>;
+  };
+  
+  return (
+    <button
+      onClick={generateAndPlay}
+      disabled={isAudioGenerating}
+      aria-label={isAudioPlaying ? "Stop briefing" : "Listen to briefing"}
+      className="p-1.5 rounded-full text-cyan-400/70 transition-colors duration-200 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-50 disabled:cursor-wait absolute top-1 right-1"
+    >
+      <Icon />
+    </button>
+  );
+};
+
+
+export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [userInput, setUserInput] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [chatSession, setChatSession] = useState<Chat | null>(null);
+  
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
+
+  const handleInitialQuery = useCallback(async (summary: string) => {
     setIsLoading(true);
     setError('');
-    setResponse('');
-    stopPlayback();
-    setAudioBuffer(null);
-    setIsAudioGenerating(false);
-
+    setChatHistory([]);
+    
+    const session = initializeChat();
+    setChatSession(session);
+    
     try {
-      const stream = await getAiAdvisorResponse(dataSummary);
-      let fullText = '';
+      const stream = await sendMessage(session, `Analyze the following data: ${summary}`);
+      
+      let currentResponse = '';
+      setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: '' }] }]);
+
       for await (const chunk of stream) {
         const textChunk = chunk.text;
-        fullText += textChunk;
-        setResponse(prev => prev + textChunk);
+        currentResponse += textChunk;
+        setChatHistory(prev => {
+            const newHistory = [...prev];
+            newHistory[newHistory.length - 1] = { role: 'model', parts: [{ text: currentResponse }] };
+            return newHistory;
+        });
       }
-      await generateAndSetAudio(fullText);
     } catch (err) {
       setError('Connection to AI Advisor failed. Check console for details.');
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [dataSummary, stopPlayback, generateAndSetAudio]);
+  }, []);
   
   useEffect(() => {
-    handleQuery();
-  }, [handleQuery]);
+    handleInitialQuery(dataSummary);
+  }, [dataSummary, handleInitialQuery]);
+  
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userInput.trim() || isLoading || !chatSession) return;
 
-  useEffect(() => {
-    return () => {
-      stopPlayback();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-    };
-  }, [stopPlayback]);
+    const newUserMessage: ChatMessage = { role: 'user', parts: [{ text: userInput }] };
+    setChatHistory(prev => [...prev, newUserMessage]);
+    setUserInput('');
+    setIsLoading(true);
 
-  const playAudio = useCallback(() => {
-    if (!audioBuffer || !audioContextRef.current) return;
-    
-    if (audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume();
-    }
-    
-    stopPlayback();
+    try {
+        const stream = await sendMessage(chatSession, userInput);
+        let currentResponse = '';
+        setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: '' }] }]);
 
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioContextRef.current.destination);
-    source.onended = () => {
-      setIsAudioPlaying(false);
-      audioSourceRef.current = null;
-    };
-    source.start(0);
-    audioSourceRef.current = source;
-    setIsAudioPlaying(true);
-  }, [audioBuffer, stopPlayback]);
-
-  const handlePlayPauseToggle = () => {
-    if (isAudioPlaying) {
-      stopPlayback();
-    } else {
-      playAudio();
+        for await (const chunk of stream) {
+            const textChunk = chunk.text;
+            currentResponse += textChunk;
+            setChatHistory(prev => {
+                const newHistory = [...prev];
+                newHistory[newHistory.length - 1] = { role: 'model', parts: [{ text: currentResponse }] };
+                return newHistory;
+            });
+        }
+    } catch (err) {
+        setError('Connection to AI Advisor failed.');
+        console.error(err);
+        setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: 'Error: Could not retrieve response.' }] }]);
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -131,37 +185,41 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
   return (
     <div className="p-4 bg-black/30 rounded-lg border border-cyan-800/60 min-h-[16rem] flex flex-col">
       <h4 className="font-orbitron text-sm text-cyan-300 mb-2">AI MISSION ADVISOR</h4>
-      <div className="flex-grow overflow-y-auto text-sm text-gray-300 leading-relaxed font-mono pr-2">
-        {isLoading && !response && <p className="text-cyan-400 animate-pulse">Receiving transmission...</p>}
-        {error && <p className="text-red-400 whitespace-pre-wrap">{error}</p>}
-        {response && (
-          <div className="whitespace-pre-wrap">
-            {response}
-            {!isLoading && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 animate-pulse"></span>}
-          </div>
-        )}
-        {!isLoading && !response && !error && (
-            <div className="text-gray-500 italic">Advisor standing by...</div>
-        )}
+      <div ref={chatContainerRef} className="flex-grow overflow-y-auto text-sm text-gray-300 leading-relaxed font-mono pr-2 space-y-4">
+        {chatHistory.map((msg, index) => (
+           <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`p-3 rounded-lg max-w-sm relative ${msg.role === 'user' ? 'bg-cyan-900/50' : 'bg-gray-800/50'}`}>
+                    <div className="whitespace-pre-wrap">
+                        {msg.parts[0].text}
+                        {isLoading && index === chatHistory.length - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 animate-pulse"></span>}
+                    </div>
+                    {msg.role === 'model' && !isLoading && <AudioPlayer textContent={msg.parts[0].text} />}
+                </div>
+           </div>
+        ))}
+         {chatHistory.length === 0 && isLoading && <p className="text-cyan-400 animate-pulse">Receiving transmission...</p>}
+         {error && <p className="text-red-400 whitespace-pre-wrap">{error}</p>}
       </div>
       
-      {(response || isAudioGenerating) && (
-        <div className="mt-4 pt-2 border-t border-cyan-800/60 flex items-center justify-center gap-4">
-            <AudioControlButton onClick={handlePlayPauseToggle} disabled={isAudioGenerating || !audioBuffer} ariaLabel={isAudioPlaying ? "Pause analysis" : "Play analysis"}>
-                {isAudioGenerating ? (
-                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                ) : isAudioPlaying ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-                )}
-            </AudioControlButton>
-
-            <AudioControlButton onClick={playAudio} disabled={isAudioGenerating || !audioBuffer} ariaLabel="Replay analysis">
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
-            </AudioControlButton>
-        </div>
-      )}
+      <div className="mt-4 pt-2 border-t border-cyan-800/60">
+        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+            <input 
+                type="text"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                disabled={isLoading}
+                className="w-full bg-gray-900/70 border border-cyan-700/60 rounded-md px-3 py-2 text-sm text-cyan-200 placeholder-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition-all duration-200"
+            />
+            <button
+                type="submit"
+                disabled={isLoading || !userInput.trim()}
+                className="px-4 py-2 font-orbitron text-sm rounded-md border-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-500/20 border-cyan-400 text-cyan-300 hover:enabled:bg-cyan-400 hover:enabled:text-gray-900"
+            >
+                SEND
+            </button>
+        </form>
+      </div>
     </div>
   );
 };
