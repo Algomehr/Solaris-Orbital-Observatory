@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import type { SimulatedData, ProcessState, ThreatMatrixItem, NewsItem, AiDataCache } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
@@ -11,11 +12,12 @@ const model = 'gemini-2.5-flash';
 
 // A simple markdown renderer
 const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+    const { language } = useLanguage();
     const htmlContent = content
       .replace(/^### (.*$)/gim, '<h3 class="font-orbitron text-cyan-300 mt-4 mb-2">$1</h3>')
       .replace(/^## (.*$)/gim, '<h2 class="font-orbitron text-cyan-200 mt-6 mb-3 border-b border-cyan-500/30 pb-1">$1</h2>')
       .replace(/\*\*(.*)\*\*/g, '<strong>$1</strong>')
-      .replace(/^- (.*$)/gim, (match, p1) => `<li class="ml-4 list-disc">${p1.replace(/<br \/>/g, '')}</li>`)
+      .replace(/^- (.*$)/gim, (match, p1) => `<li class="${language === 'fa' ? 'mr-4' : 'ml-4'} list-disc">${p1.replace(/<br \/>/g, '')}</li>`)
       .replace(/\n/g, '<br />');
   
     return <div className="prose prose-invert text-cyan-400/90 leading-relaxed space-y-2" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -26,9 +28,9 @@ const Panel: React.FC<React.PropsWithChildren<{ title: string; icon: React.React
     <div className={`bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg p-4 shadow-lg shadow-cyan-500/10 flex flex-col ${className}`}>
         <h3 className="font-orbitron text-cyan-300 border-b-2 border-cyan-500/30 pb-1 mb-3 text-sm tracking-wider uppercase flex items-center flex-shrink-0">
             {icon}
-            <span className="ml-2">{title}</span>
+            <span className="ml-2 rtl:mr-2 rtl:ml-0">{title}</span>
         </h3>
-        <div className="flex-grow overflow-y-auto pr-2 text-sm font-mono text-cyan-400/90 leading-relaxed custom-scrollbar">
+        <div className="flex-grow overflow-y-auto pr-2 rtl:pl-2 rtl:pr-0 text-sm font-mono text-cyan-400/90 leading-relaxed custom-scrollbar">
             {children}
         </div>
     </div>
@@ -67,6 +69,7 @@ export const SolarForecast: React.FC<{
     forecastData: AiDataCache | null;
     updateAiCache: (updates: Partial<AiDataCache>) => void;
 }> = ({ data, processState, forecastData, updateAiCache }) => {
+    const { t } = useLanguage();
     const [isLoading, setIsLoading] = useState({ probability: false, matrix: false, news: false, sevenDay: false });
     const [error, setError] = useState({ probability: '', matrix: '', news: '', sevenDay: '' });
     
@@ -222,8 +225,8 @@ export const SolarForecast: React.FC<{
     if (processState === 'idle' || processState === 'processing') {
         return (
              <div className="w-full h-full flex flex-col items-center justify-center text-center p-4 gap-6 animate-fadeIn">
-                 <p className="font-orbitron text-lg text-cyan-400">Engage observatory sensors to generate a forecast.</p>
-                 <p className="text-gray-500">Awaiting data stream from the main observatory...</p>
+                 <p className="font-orbitron text-lg text-cyan-400">{t('forecast_engagePrompt')}</p>
+                 <p className="text-gray-500">{t('forecast_awaitingStream')}</p>
              </div>
         );
     }
@@ -232,40 +235,40 @@ export const SolarForecast: React.FC<{
         <div className="w-full h-full flex flex-col p-4 gap-6 animate-fadeIn">
              <header className="text-center">
                 <h2 className="font-orbitron text-2xl text-cyan-200 tracking-widest">
-                    SOLAR FORECAST & THREAT ANALYSIS
+                    {t('forecast_title')}
                 </h2>
                 <p className="text-cyan-400/80">
-                   AI-powered predictions based on real-time simulated data and live web reports.
+                   {t('forecast_subtitle')}
                 </p>
             </header>
              <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
                 <div className="lg:col-span-1 flex flex-col gap-6">
-                    <Panel title="Geomagnetic Storm Probability" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}>
-                        {isLoading.probability ? <Loader text="ANALYZING..." /> : forecastData?.stormProbability !== null && forecastData?.stormProbability !== undefined ? <StormGauge probability={forecastData.stormProbability} /> : <p>{error.probability || "Awaiting data..."}</p>}
+                    <Panel title={t('forecast_stormProb')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}>
+                        {isLoading.probability ? <Loader text={t('forecast_analyzing')} /> : forecastData?.stormProbability !== null && forecastData?.stormProbability !== undefined ? <StormGauge probability={forecastData.stormProbability} /> : <p>{error.probability || t('forecast_awaitingData')}</p>}
                     </Panel>
-                    <Panel title="Live Solar Events Feed" className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2H12a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.707 4.293l.94-1.594a1 1 0 011.728 1.02l-.939 1.594m7.562 0l.94 1.594a1 1 0 01-1.728 1.02l-.94-1.594M12 18a6 6 0 00-6-6h12a6 6 0 00-6 6z" /></svg>}>
-                        {isLoading.news ? <Loader text="SCANNING WEB..." /> : error.news ? <p className="text-red-400">{error.news}</p> : (
+                    <Panel title={t('forecast_liveFeed')} className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2H12a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.707 4.293l.94-1.594a1 1 0 011.728 1.02l-.939 1.594m7.562 0l.94 1.594a1 1 0 01-1.728 1.02l-.94-1.594M12 18a6 6 0 00-6-6h12a6 6 0 00-6 6z" /></svg>}>
+                        {isLoading.news ? <Loader text={t('forecast_scanningWeb')} /> : error.news ? <p className="text-red-400">{error.news}</p> : (
                             <div className="space-y-4">
                                 {forecastData?.newsFeed && forecastData.newsFeed.length > 0 ? forecastData.newsFeed.map((item, i) => (
                                     <div key={i}>
                                         <a href={item.uri} target="_blank" rel="noopener noreferrer" className="font-bold text-cyan-200 hover:underline">{item.title}</a>
                                         <p className="text-cyan-400/80 text-xs mt-1">{item.summary}</p>
                                     </div>
-                                )) : <p>No recent major events found.</p>}
+                                )) : <p>{t('forecast_noEvents')}</p>}
                             </div>
                         )}
                     </Panel>
                 </div>
                  <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
-                    <Panel title="Active Region Threat Matrix" className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>}>
-                         {isLoading.matrix ? <Loader text="ASSESSING THREATS..." /> : error.matrix ? <p className="text-red-400">{error.matrix}</p> : forecastData?.threatMatrix && forecastData.threatMatrix.length > 0 ? (
-                            <table className="w-full text-left text-xs">
+                    <Panel title={t('forecast_threatMatrix')} className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>}>
+                         {isLoading.matrix ? <Loader text={t('forecast_assessingThreats')} /> : error.matrix ? <p className="text-red-400">{error.matrix}</p> : forecastData?.threatMatrix && forecastData.threatMatrix.length > 0 ? (
+                            <table className="w-full text-left rtl:text-right text-xs">
                                 <thead className="text-cyan-300 uppercase">
                                     <tr>
-                                        <th className="p-2">Region</th>
-                                        <th className="p-2">Class</th>
-                                        <th className="p-2 text-center">Flare Prob. (C/M/X)%</th>
-                                        <th className="p-2">CME Risk</th>
+                                        <th className="p-2">{t('forecast_matrixRegion')}</th>
+                                        <th className="p-2">{t('forecast_matrixClass')}</th>
+                                        <th className="p-2 text-center">{t('forecast_matrixProb')}</th>
+                                        <th className="p-2">{t('forecast_matrixRisk')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-cyan-800/60">
@@ -279,16 +282,16 @@ export const SolarForecast: React.FC<{
                                     ))}
                                 </tbody>
                             </table>
-                         ) : <p>No significant active regions detected.</p>}
+                         ) : <p>{t('forecast_noRegions')}</p>}
                     </Panel>
                      <div className="flex-shrink-0">
                         <button onClick={fetchSevenDayForecast} disabled={isLoading.sevenDay} className="w-full mt-2 py-3 font-orbitron text-lg rounded-md border-2 transition-all duration-300 bg-cyan-500/20 border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-gray-900 hover:shadow-lg hover:shadow-cyan-400/50 active:scale-95 disabled:bg-gray-600/30 disabled:border-gray-500 disabled:text-gray-500">
-                             {isLoading.sevenDay ? 'GENERATING...' : 'GENERATE 7-DAY FORECAST'}
+                             {isLoading.sevenDay ? t('forecast_generating') : t('forecast_generate7Day')}
                         </button>
-                         {isLoading.sevenDay && <div className="p-4 mt-4 bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg"><Loader text="GENERATING LONG-RANGE FORECAST..." /></div>}
+                         {isLoading.sevenDay && <div className="p-4 mt-4 bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg"><Loader text={t('forecast_genLongRange')} /></div>}
                          {error.sevenDay && <p className="text-red-400 mt-4">{error.sevenDay}</p>}
                          {forecastData?.sevenDayForecast && (
-                            <Panel title="7-Day Solar Weather Outlook" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} className="mt-4">
+                            <Panel title={t('forecast_7DayTitle')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} className="mt-4">
                                 <MarkdownRenderer content={forecastData.sevenDayForecast} />
                             </Panel>
                          )}

@@ -1,7 +1,7 @@
-
 import React from 'react';
 import type { InstrumentSelection, AiaWavelength } from '../types';
 import { AIA_WAVELENGTHS, INSTRUMENTS } from '../constants';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ControlPanelProps {
   selections: InstrumentSelection;
@@ -37,7 +37,7 @@ const CustomCheckbox: React.FC<{ id: string; label: string; description: string;
                 </svg>
             )}
         </div>
-        <div className="ml-3">
+        <div className="ml-3 rtl:mr-3 rtl:ml-0">
             <span className="font-bold text-gray-100">{label}</span>
             <p className="text-xs text-cyan-300/70">{description}</p>
         </div>
@@ -46,6 +46,7 @@ const CustomCheckbox: React.FC<{ id: string; label: string; description: string;
 
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({ selections, setSelections, selectedAiaWavelength, setSelectedAiaWavelength, onEngage, isProcessing }) => {
+  const { t } = useLanguage();
   const handleInstrumentChange = (instrument: keyof InstrumentSelection) => {
     setSelections(prev => ({ ...prev, [instrument]: !prev[instrument] }));
   };
@@ -54,9 +55,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ selections, setSelec
 
   return (
     <div className="p-4 bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg flex flex-col h-full shadow-lg shadow-cyan-500/10">
-      <h2 className="font-orbitron text-lg text-center mb-4 text-cyan-200 tracking-widest">MISSION PARAMETERS</h2>
+      <h2 className="font-orbitron text-lg text-center mb-4 text-cyan-200 tracking-widest">{t('controlPanel_title')}</h2>
       <div className="space-y-6 flex-grow">
-        <PanelSection title="Data Source">
+        <PanelSection title={t('controlPanel_dataSource')}>
           <div className="space-y-1">
             {INSTRUMENTS.map(inst => (
                  <CustomCheckbox 
@@ -71,7 +72,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ selections, setSelec
           </div>
         </PanelSection>
 
-        <PanelSection title="AIA Spectral Filter">
+        <PanelSection title={t('controlPanel_aiaFilter')}>
           <div className="grid grid-cols-4 gap-2">
             {AIA_WAVELENGTHS.map(w => (
               <button
@@ -100,7 +101,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ selections, setSelec
           }
         `}
       >
-        {isProcessing ? 'PROCESSING...' : 'ENGAGE'}
+        {isProcessing ? t('controlPanel_processing') : t('controlPanel_engage')}
       </button>
     </div>
   );

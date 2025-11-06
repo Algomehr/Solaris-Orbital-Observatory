@@ -2,6 +2,7 @@ import React from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 import { AiAdvisor } from './AiAdvisor';
 import type { ProcessState, SimulatedData, KpIndexData, SolarWindData, ChatMessage, AiDataCache } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const ChartContainer: React.FC<React.PropsWithChildren<{ title: string; className?: string }>> = ({ title, className, children }) => (
   <div className={`p-4 bg-black/30 rounded-lg border border-cyan-800/60 flex flex-col ${className}`}>
@@ -108,19 +109,22 @@ const KpIndexIndicator: React.FC<{ data: KpIndexData }> = ({ data }) => {
     );
 };
 
-const SolarWindDisplay: React.FC<{ data: SolarWindData }> = ({ data }) => (
-    <div className="flex justify-around items-center text-center h-full">
-        <div>
-            <p className="font-orbitron text-3xl text-cyan-200">{data.speed.toFixed(0)}</p>
-            <p className="text-xs uppercase tracking-wider text-cyan-400/80">Wind Speed (km/s)</p>
+const SolarWindDisplay: React.FC<{ data: SolarWindData }> = ({ data }) => {
+    const { t } = useLanguage();
+    return (
+        <div className="flex justify-around items-center text-center h-full">
+            <div>
+                <p className="font-orbitron text-3xl text-cyan-200">{data.speed.toFixed(0)}</p>
+                <p className="text-xs uppercase tracking-wider text-cyan-400/80">{t('indicator_windSpeed')}</p>
+            </div>
+            <div className="border-l-2 rtl:border-r-2 rtl:border-l-0 border-cyan-700/50 h-12"></div>
+            <div>
+                <p className="font-orbitron text-3xl text-cyan-200">{data.density.toFixed(1)}</p>
+                <p className="text-xs uppercase tracking-wider text-cyan-400/80">{t('indicator_density')}</p>
+            </div>
         </div>
-         <div className="border-l-2 border-cyan-700/50 h-12"></div>
-        <div>
-            <p className="font-orbitron text-3xl text-cyan-200">{data.density.toFixed(1)}</p>
-            <p className="text-xs uppercase tracking-wider text-cyan-400/80">Density (p/cm³)</p>
-        </div>
-    </div>
-);
+    );
+}
 
 
 export const DataDashboard: React.FC<{ 
@@ -129,38 +133,39 @@ export const DataDashboard: React.FC<{
   advisorChatHistory: ChatMessage[] | undefined;
   updateAiCache: (updates: Partial<AiDataCache>) => void;
 }> = ({ processState, data, advisorChatHistory, updateAiCache }) => {
+  const { t } = useLanguage();
   const renderContent = () => {
     switch (processState) {
       case 'idle':
-        return <div className="text-center text-gray-500">Awaiting data processing...</div>;
+        return <div className="text-center text-gray-500">{t('dataDashboard_awaiting')}</div>;
       case 'processing':
-        return <div className="text-center text-cyan-400 animate-pulse">Analyzing data stream...</div>;
+        return <div className="text-center text-cyan-400 animate-pulse">{t('dataDashboard_analyzing')}</div>;
       case 'complete':
-        if (!data) return <div className="text-center text-red-500">Data processing failed.</div>;
+        if (!data) return <div className="text-center text-red-500">{t('dataDashboard_failed')}</div>;
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <ChartContainer title="Solar Wind" className="h-36">
+              <ChartContainer title={t('chart_solarWind')} className="h-36">
                   {data.solarWindData && <SolarWindDisplay data={data.solarWindData} />}
               </ChartContainer>
-              <ChartContainer title="Geomagnetic Activity (Kp)" className="h-36">
+              <ChartContainer title={t('chart_geomagnetic')} className="h-36">
                   {data.kpIndexData && <KpIndexIndicator data={data.kpIndexData} />}
               </ChartContainer>
             </div>
 
             {data.protonFluxData && (
-              <ChartContainer title="Proton Flux (>10 MeV)" className="h-64">
+              <ChartContainer title={t('chart_protonFlux')} className="h-64">
                 <ProtonFluxChart data={data.protonFluxData} />
               </ChartContainer>
             )}
 
             {data.selections.GOES && data.goesData && (
-              <ChartContainer title="GOES X-Ray Flux (24h)" className="h-64">
+              <ChartContainer title={t('chart_goesXray')} className="h-64">
                 <GoesChart data={data.goesData} />
               </ChartContainer>
             )}
             {data.selections.HMI && data.hmiData && (
-              <ChartContainer title="HMI Active Sunspot Regions" className="h-64">
+              <ChartContainer title={t('chart_hmiSpots')} className="h-64">
                 <HmiChart data={data.hmiData} />
               </ChartContainer>
             )}
@@ -176,8 +181,8 @@ export const DataDashboard: React.FC<{
 
   return (
     <div className="p-4 bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg h-full shadow-lg shadow-cyan-500/10 flex flex-col">
-      <h2 className="font-orbitron text-lg text-center mb-4 text-cyan-200 tracking-widest flex-shrink-0">DATA ANALYSIS</h2>
-      <div className="flex-grow overflow-y-auto pr-2">
+      <h2 className="font-orbitron text-lg text-center mb-4 text-cyan-200 tracking-widest flex-shrink-0">{t('dataDashboard_title')}</h2>
+      <div className="flex-grow overflow-y-auto pr-2 rtl:pl-2 rtl:pr-0">
         {renderContent()}
       </div>
     </div>

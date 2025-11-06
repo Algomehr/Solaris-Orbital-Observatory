@@ -11,10 +11,12 @@ import { SolarForecast } from './components/SolarForecast';
 import type { InstrumentSelection, AiaWavelength, SimulatedData, ProcessState, AiDataCache } from './types';
 import { AIA_WAVELENGTHS } from './constants';
 import { fetchGoesData, generateHmiData, generateSummary, generateSolarWindData, generateProtonFluxData, generateKpIndexData } from './services/simulationService';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 
 type Tab = 'observatory' | 'flareAnalysis' | 'multiSpectrum' | 'missionControl' | 'forecast';
 
-export default function App() {
+function AppContent() {
+  const { t } = useLanguage();
   const [selections, setSelections] = useState<InstrumentSelection>({
     AIA: false,
     HMI: false,
@@ -168,19 +170,19 @@ export default function App() {
       
       <nav className="mt-4 flex items-center border-b border-cyan-500/30 overflow-x-auto">
         <TabButton tabId="observatory" currentTab={activeTab} onClick={setActiveTab}>
-          OBSERVATORY
+          {t('tab_observatory')}
         </TabButton>
         <TabButton tabId="flareAnalysis" currentTab={activeTab} onClick={setActiveTab}>
-          3D FLARE ANALYSIS
+          {t('tab_flareAnalysis')}
         </TabButton>
         <TabButton tabId="multiSpectrum" currentTab={activeTab} onClick={setActiveTab}>
-          MULTI-SPECTRUM VIEW
+          {t('tab_multiSpectrum')}
         </TabButton>
          <TabButton tabId="missionControl" currentTab={activeTab} onClick={setActiveTab}>
-          MISSION CONTROL
+          {t('tab_missionControl')}
         </TabButton>
          <TabButton tabId="forecast" currentTab={activeTab} onClick={setActiveTab}>
-          FORECAST
+          {t('tab_forecast')}
         </TabButton>
       </nav>
 
@@ -258,5 +260,13 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }

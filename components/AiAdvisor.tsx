@@ -3,6 +3,7 @@ import type { Chat } from '@google/genai';
 import { initializeChat, sendMessage } from '../services/geminiService';
 import { generateSpeech, decode, decodeAudioData } from '../services/ttsService';
 import type { ChatMessage, AiDataCache } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface AiAdvisorProps {
   dataSummary: string;
@@ -11,6 +12,7 @@ interface AiAdvisorProps {
 }
 
 const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
+  const { t } = useLanguage();
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
@@ -69,11 +71,11 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
       setIsAudioPlaying(true);
     } catch (err) {
       console.error("Failed to generate audio:", err);
-      setError("Audio failed");
+      setError(t('aiAdvisor_audioFailed'));
     } finally {
       setIsAudioGenerating(false);
     }
-  }, [textContent, audioBuffer, isAudioPlaying, stopPlayback]);
+  }, [textContent, audioBuffer, isAudioPlaying, stopPlayback, t]);
 
   useEffect(() => {
       return () => {
@@ -91,8 +93,8 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
     <button
       onClick={generateAndPlay}
       disabled={isAudioGenerating}
-      aria-label={isAudioPlaying ? "Stop briefing" : "Listen to briefing"}
-      className="p-1.5 rounded-full text-cyan-400/70 transition-colors duration-200 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-50 disabled:cursor-wait absolute top-1 right-1"
+      aria-label={isAudioPlaying ? t('aiAdvisor_stop') : t('aiAdvisor_listen')}
+      className="p-1.5 rounded-full text-cyan-400/70 transition-colors duration-200 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-50 disabled:cursor-wait absolute top-1 right-1 rtl:left-1 rtl:right-auto"
     >
       <Icon />
     </button>
@@ -101,6 +103,7 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
 
 
 export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, updateAiCache }) => {
+  const { t } = useLanguage();
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -196,20 +199,20 @@ updateAiCache({ advisorChatHistory: [...currentHistoryOnError, errorResponseMess
 
   return (
     <div className="p-4 bg-black/30 rounded-lg border border-cyan-800/60 min-h-[16rem] flex flex-col">
-      <h4 className="font-orbitron text-sm text-cyan-300 mb-2">AI MISSION ADVISOR</h4>
-      <div ref={chatContainerRef} className="flex-grow overflow-y-auto text-sm text-gray-300 leading-relaxed font-mono pr-2 space-y-4">
+      <h4 className="font-orbitron text-sm text-cyan-300 mb-2">{t('aiAdvisor_title')}</h4>
+      <div ref={chatContainerRef} className="flex-grow overflow-y-auto text-sm text-gray-300 leading-relaxed font-mono pr-2 rtl:pl-2 rtl:pr-0 space-y-4">
         {(chatHistory || []).map((msg, index) => (
            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`p-3 rounded-lg max-w-sm relative ${msg.role === 'user' ? 'bg-cyan-900/50' : 'bg-gray-800/50'}`}>
                     <div className="whitespace-pre-wrap">
                         {msg.parts[0].text}
-                        {isLoading && index === (chatHistory?.length ?? 0) - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 animate-pulse"></span>}
+                        {isLoading && index === (chatHistory?.length ?? 0) - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 rtl:mr-1 animate-pulse"></span>}
                     </div>
                     {msg.role === 'model' && !isLoading && msg.parts[0].text && <AudioPlayer textContent={msg.parts[0].text} />}
                 </div>
            </div>
         ))}
-         {(!chatHistory || chatHistory.length === 0) && isLoading && <p className="text-cyan-400 animate-pulse">Receiving transmission...</p>}
+         {(!chatHistory || chatHistory.length === 0) && isLoading && <p className="text-cyan-400 animate-pulse">{t('aiAdvisor_receiving')}</p>}
          {error && <p className="text-red-400 whitespace-pre-wrap">{error}</p>}
       </div>
       
@@ -219,7 +222,7 @@ updateAiCache({ advisorChatHistory: [...currentHistoryOnError, errorResponseMess
                 type="text"
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
-                placeholder="Ask a follow-up question..."
+                placeholder={t('aiAdvisor_placeholder')}
                 disabled={isLoading || !chatSession}
                 className="w-full bg-gray-900/70 border border-cyan-700/60 rounded-md px-3 py-2 text-sm text-cyan-200 placeholder-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition-all duration-200"
             />
@@ -228,7 +231,7 @@ updateAiCache({ advisorChatHistory: [...currentHistoryOnError, errorResponseMess
                 disabled={isLoading || !userInput.trim() || !chatSession}
                 className="px-4 py-2 font-orbitron text-sm rounded-md border-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-500/20 border-cyan-400 text-cyan-300 hover:enabled:bg-cyan-400 hover:enabled:text-gray-900"
             >
-                SEND
+                {t('aiAdvisor_send')}
             </button>
         </form>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AiaWavelength, InstrumentSelection } from '../types';
 import { HMI_IMAGE_URL } from '../constants';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface MainDisplayProps {
   wavelength: AiaWavelength;
@@ -30,10 +31,13 @@ const ViewToggleButton: React.FC<{
 
 
 export const MainDisplay: React.FC<MainDisplayProps> = ({ wavelength, isProcessing, showHmi, selections, displaySource, setDisplaySource }) => {
+  const { t } = useLanguage();
   const [mediaUrlWithCacheBust, setMediaUrlWithCacheBust] = useState('');
 
   const baseUrl = showHmi ? HMI_IMAGE_URL : wavelength.videoUrl;
-  const imageLabel = showHmi ? 'HMI Magnetogram' : `AIA ${wavelength.name}Å - ${wavelength.temp}`;
+  const imageLabel = showHmi 
+    ? t('mainDisplay_hmiLabel') 
+    : t('mainDisplay_aiaLabel', { name: wavelength.name, temp: wavelength.temp });
 
   useEffect(() => {
     // Add a cache-busting query parameter to fetch the latest media from SDO
@@ -72,19 +76,19 @@ export const MainDisplay: React.FC<MainDisplayProps> = ({ wavelength, isProcessi
       </div>
       
       {isProcessing && (
-        <div className="absolute inset-0 flex flex-col items-start justify-center text-center bg-black/30 rounded-full">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-black/30 rounded-full">
             <svg className="w-24 h-24 text-cyan-400 animate-spin" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" strokeOpacity="0.3"/>
                 <path d="M50 5C25.1472 5 5 25.1472 5 50" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
             </svg>
-            <p className="mt-4 font-orbitron text-lg tracking-widest text-cyan-300">ACQUIRING DATA...</p>
+            <p className="mt-4 font-orbitron text-lg tracking-widest text-cyan-300">{t('mainDisplay_acquiring')}</p>
         </div>
       )}
       
       {selections.AIA && selections.HMI && !isProcessing && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-start gap-2 p-1 bg-black/70 border border-cyan-700/50 rounded-lg backdrop-blur-sm">
-          <ViewToggleButton label="AIA" active={displaySource === 'AIA'} onClick={() => setDisplaySource('AIA')} />
-          <ViewToggleButton label="HMI" active={displaySource === 'HMI'} onClick={() => setDisplaySource('HMI')} />
+          <ViewToggleButton label={t('mainDisplay_toggleAIA')} active={displaySource === 'AIA'} onClick={() => setDisplaySource('AIA')} />
+          <ViewToggleButton label={t('mainDisplay_toggleHMI')} active={displaySource === 'HMI'} onClick={() => setDisplaySource('HMI')} />
         </div>
       )}
 
