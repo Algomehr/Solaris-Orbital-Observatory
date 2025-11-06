@@ -8,7 +8,7 @@ import { SolarFlare3D } from './components/SolarFlare3D';
 import { MultiSpectrumView } from './components/HistoricalTimelapse';
 import { MissionControl } from './components/MissionControl';
 import { SolarForecast } from './components/SolarForecast';
-import type { InstrumentSelection, AiaWavelength, SimulatedData, ProcessState } from './types';
+import type { InstrumentSelection, AiaWavelength, SimulatedData, ProcessState, AiDataCache } from './types';
 import { AIA_WAVELENGTHS } from './constants';
 import { fetchGoesData, generateHmiData, generateSummary, generateSolarWindData, generateProtonFluxData, generateKpIndexData } from './services/simulationService';
 
@@ -26,11 +26,27 @@ export default function App() {
   const [processedData, setProcessedData] = useState<SimulatedData | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('observatory');
   const [displaySource, setDisplaySource] = useState<'AIA' | 'HMI'>('AIA');
+  const [aiDataCache, setAiDataCache] = useState<AiDataCache | null>(null);
 
   const addStatusMessage = useCallback((message: string) => {
     const timestamp = new Date().toISOString().split('T')[1].substring(0, 8);
     setStatusMessages(prev => [...prev, `[${timestamp}] ${message}`]);
   }, []);
+
+  const updateAiCache = useCallback((updates: Partial<AiDataCache>) => {
+    setAiDataCache(prev => ({
+        ...(prev ?? { // Default structure for initial state
+            advisorChatHistory: [],
+            missionData: null,
+            stormProbability: null,
+            threatMatrix: null,
+            newsFeed: null,
+            sevenDayForecast: null,
+        }),
+        ...updates,
+    }));
+  }, []);
+
 
   useEffect(() => {
     // Reset display source preference if both are not selected
@@ -44,6 +60,7 @@ export default function App() {
         return;
     }
     
+    setAiDataCache(null); // Reset all AI analysis for new data
     setProcessState('processing');
     setStatusMessages([]);
     setProcessedData(null);
@@ -200,6 +217,8 @@ export default function App() {
               <DataDashboard 
                 processState={processState}
                 data={processedData}
+                advisorChatHistory={aiDataCache?.advisorChatHistory}
+                updateAiCache={updateAiCache}
               />
             </aside>
           </section>
@@ -220,13 +239,21 @@ export default function App() {
 
       {activeTab === 'missionControl' && (
          <main className="flex-grow mt-4 min-h-0">
-            <MissionControl />
+            <MissionControl 
+              missionData={aiDataCache?.missionData}
+              updateAiCache={updateAiCache}
+            />
         </main>
       )}
       
       {activeTab === 'forecast' && (
          <main className="flex-grow mt-4 min-h-0">
-            <SolarForecast data={processedData} processState={processState} />
+            <SolarForecast 
+              data={processedData} 
+              processState={processState} 
+              forecastData={aiDataCache}
+              updateAiCache={updateAiCache}
+            />
         </main>
       )}
 

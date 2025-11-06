@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { OrbitalMap } from './OrbitalMap';
-import type { MissionData, MissionMetrics, TelemetryData } from '../types';
+import type { MissionData, MissionMetrics, TelemetryData, AiDataCache } from '../types';
 
 
 const API_KEY = process.env.API_KEY;
@@ -153,24 +153,35 @@ const MissionLog: React.FC<{ log: string }> = ({ log }) => (
 );
 
 
-export const MissionControl: React.FC = () => {
+export const MissionControl: React.FC<{ 
+  missionData: MissionData | null | undefined; 
+  updateAiCache: (updates: Partial<AiDataCache>) => void; 
+}> = ({ missionData, updateAiCache }) => {
     const [missionName, setMissionName] = useState('Solar Flare Observation Alpha');
     const [missionType, setMissionType] = useState('Solar Flare Observation');
     const [duration, setDuration] = useState(12);
     const [trajectory, setTrajectory] = useState('Heliostationary');
     const [notes, setNotes] = useState('Prioritize observation of active region AR3745.');
     
-    const [missionData, setMissionData] = useState<MissionData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [isManeuvering, setIsManeuvering] = useState(false);
+    
+    useEffect(() => {
+        // Trigger animation if data is loaded from cache
+        if (missionData) {
+            setIsManeuvering(true);
+        }
+    }, [missionData]);
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError('');
-        setMissionData(null);
         setIsManeuvering(false);
+        // Clear previous mission data from cache while generating a new one
+        updateAiCache({ missionData: null });
 
         const systemInstruction = `
             You are 'SOLARIS', an AI Mission Advisor. Your task is to generate a flight plan and key mission metrics for a solar observatory satellite.
@@ -209,11 +220,13 @@ export const MissionControl: React.FC = () => {
             const cleanedText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsedData = JSON.parse(cleanedText);
             
-            setMissionData({
-                log: parsedData.flightPlanLog,
-                metrics: parsedData.missionMetrics,
+            updateAiCache({
+                missionData: {
+                    log: parsedData.flightPlanLog,
+                    metrics: parsedData.missionMetrics,
+                }
             });
-            setIsManeuvering(true); // Trigger animation on success
+            // isManeuvering will be set by the useEffect watching missionData prop
 
         } catch (err) {
             console.error("Error generating flight plan:", err);

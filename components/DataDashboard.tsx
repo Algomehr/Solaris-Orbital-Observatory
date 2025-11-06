@@ -1,7 +1,7 @@
 import React from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 import { AiAdvisor } from './AiAdvisor';
-import type { ProcessState, SimulatedData, KpIndexData, SolarWindData } from '../types';
+import type { ProcessState, SimulatedData, KpIndexData, SolarWindData, ChatMessage, AiDataCache } from '../types';
 
 const ChartContainer: React.FC<React.PropsWithChildren<{ title: string; className?: string }>> = ({ title, className, children }) => (
   <div className={`p-4 bg-black/30 rounded-lg border border-cyan-800/60 flex flex-col ${className}`}>
@@ -123,7 +123,12 @@ const SolarWindDisplay: React.FC<{ data: SolarWindData }> = ({ data }) => (
 );
 
 
-export const DataDashboard: React.FC<{ processState: ProcessState; data: SimulatedData | null }> = ({ processState, data }) => {
+export const DataDashboard: React.FC<{ 
+  processState: ProcessState; 
+  data: SimulatedData | null;
+  advisorChatHistory: ChatMessage[] | undefined;
+  updateAiCache: (updates: Partial<AiDataCache>) => void;
+}> = ({ processState, data, advisorChatHistory, updateAiCache }) => {
   const renderContent = () => {
     switch (processState) {
       case 'idle':
@@ -159,7 +164,11 @@ export const DataDashboard: React.FC<{ processState: ProcessState; data: Simulat
                 <HmiChart data={data.hmiData} />
               </ChartContainer>
             )}
-            <AiAdvisor dataSummary={data.summary} />
+            <AiAdvisor 
+              dataSummary={data.summary}
+              chatHistory={advisorChatHistory}
+              updateAiCache={updateAiCache}
+            />
           </div>
         );
     }

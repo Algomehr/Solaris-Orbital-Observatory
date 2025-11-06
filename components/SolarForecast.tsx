@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
-import type { SimulatedData, ProcessState, ThreatMatrixItem, NewsItem } from '../types';
+import type { SimulatedData, ProcessState, ThreatMatrixItem, NewsItem, AiDataCache } from '../types';
 
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
@@ -61,16 +61,20 @@ const StormGauge: React.FC<{ probability: number }> = ({ probability }) => {
     );
 };
 
-export const SolarForecast: React.FC<{ data: SimulatedData | null; processState: ProcessState; }> = ({ data, processState }) => {
-    const [stormProbability, setStormProbability] = useState<number | null>(null);
-    const [threatMatrix, setThreatMatrix] = useState<ThreatMatrixItem[] | null>(null);
-    const [newsFeed, setNewsFeed] = useState<NewsItem[] | null>(null);
-    const [sevenDayForecast, setSevenDayForecast] = useState<string | null>(null);
-
+export const SolarForecast: React.FC<{ 
+    data: SimulatedData | null; 
+    processState: ProcessState; 
+    forecastData: AiDataCache | null;
+    updateAiCache: (updates: Partial<AiDataCache>) => void;
+}> = ({ data, processState, forecastData, updateAiCache }) => {
     const [isLoading, setIsLoading] = useState({ probability: false, matrix: false, news: false, sevenDay: false });
     const [error, setError] = useState({ probability: '', matrix: '', news: '', sevenDay: '' });
     
     const fetchPredictionData = useCallback(async (summary: string) => {
+        if (forecastData?.stormProbability !== null && forecastData?.stormProbability !== undefined) {
+            return; // Data already in cache
+        }
+
         setIsLoading(prev => ({ ...prev, probability: true, matrix: true }));
         setError(prev => ({ ...prev, probability: '', matrix: '' }));
 
@@ -115,8 +119,10 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
             });
 
             const parsed = JSON.parse(response.text);
-            setStormProbability(parsed.stormProbability);
-            setThreatMatrix(parsed.threatMatrix);
+            updateAiCache({
+                stormProbability: parsed.stormProbability,
+                threatMatrix: parsed.threatMatrix
+            });
 
         } catch (err) {
             console.error("Error fetching prediction data:", err);
@@ -125,9 +131,12 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
             setIsLoading(prev => ({ ...prev, probability: false, matrix: false }));
         }
 
-    }, []);
+    }, [forecastData, updateAiCache]);
 
     const fetchNewsFeed = useCallback(async () => {
+        if (forecastData?.newsFeed) {
+            return; // Data already in cache
+        }
         setIsLoading(prev => ({ ...prev, news: true }));
         setError(prev => ({ ...prev, news: '' }));
         
@@ -148,37 +157,36 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
                         newsItems.push({
                             title: chunk.web.title || 'Untitled',
                             uri: chunk.web.uri,
-                            summary: 'AI summary based on the source content will be generated here. For now, please refer to the source.' // Placeholder for summary, as generateContent doesn't directly provide per-source summaries in this format.
+                            summary: 'AI summary based on the source content will be generated here. For now, please refer to the source.' // Placeholder
                         });
                     }
                 }
             }
-             // We'll use the main text as the summary if available
+             
             const textResponse = response.text;
-            // This is a simplified way to connect summaries to links. A more robust solution would be needed for production.
             if(newsItems.length > 0 && textResponse) {
-                const summaries = textResponse.split(/\n\s*\n/); // Split by double newline
+                const summaries = textResponse.split(/\n\s*\n/); 
                 summaries.forEach((summary, index) => {
                     if(newsItems[index]) {
-                        newsItems[index].summary = summary.replace(/^\d+\.\s\*\*(.*)\*\*\s-/, ''); // clean up formatting
+                        newsItems[index].summary = summary.replace(/^\d+\.\s\*\*(.*)\*\*\s-/, '');
                     }
                 });
             }
 
-            setNewsFeed(newsItems.slice(0, 3)); // Ensure we only show top 3
+            updateAiCache({ newsFeed: newsItems.slice(0, 3) });
         } catch(err) {
             console.error("Error fetching news feed:", err);
             setError(prev => ({ ...prev, news: 'Failed to fetch live solar feed.' }));
         } finally {
             setIsLoading(prev => ({ ...prev, news: false }));
         }
-    }, []);
+    }, [forecastData, updateAiCache]);
 
     const fetchSevenDayForecast = async () => {
         if (!data?.summary) return;
         setIsLoading(prev => ({ ...prev, sevenDay: true }));
         setError(prev => ({ ...prev, sevenDay: '' }));
-        setSevenDayForecast(null);
+        updateAiCache({ sevenDayForecast: null });
 
          const systemInstruction = `You are a senior space weather forecaster. Based on the current solar data, generate a 7-day forecast.
          The output should be in Markdown format.
@@ -190,7 +198,7 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
                 contents: `Current data: ${data.summary}`,
                 config: { systemInstruction },
             });
-            setSevenDayForecast(response.text);
+            updateAiCache({ sevenDayForecast: response.text });
         } catch (err) {
             console.error("Error fetching 7-day forecast:", err);
             setError(prev => ({ ...prev, sevenDay: 'Failed to generate forecast.' }));
@@ -203,9 +211,6 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
     useEffect(() => {
         if (processState === 'complete' && data?.summary) {
             fetchPredictionData(data.summary);
-        } else {
-            setStormProbability(null);
-            setThreatMatrix(null);
         }
     }, [data, processState, fetchPredictionData]);
 
@@ -236,12 +241,12 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
              <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
                 <div className="lg:col-span-1 flex flex-col gap-6">
                     <Panel title="Geomagnetic Storm Probability" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}>
-                        {isLoading.probability ? <Loader text="ANALYZING..." /> : stormProbability !== null ? <StormGauge probability={stormProbability} /> : <p>{error.probability || "Awaiting data..."}</p>}
+                        {isLoading.probability ? <Loader text="ANALYZING..." /> : forecastData?.stormProbability !== null && forecastData?.stormProbability !== undefined ? <StormGauge probability={forecastData.stormProbability} /> : <p>{error.probability || "Awaiting data..."}</p>}
                     </Panel>
                     <Panel title="Live Solar Events Feed" className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2H12a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.707 4.293l.94-1.594a1 1 0 011.728 1.02l-.939 1.594m7.562 0l.94 1.594a1 1 0 01-1.728 1.02l-.94-1.594M12 18a6 6 0 00-6-6h12a6 6 0 00-6 6z" /></svg>}>
                         {isLoading.news ? <Loader text="SCANNING WEB..." /> : error.news ? <p className="text-red-400">{error.news}</p> : (
                             <div className="space-y-4">
-                                {newsFeed && newsFeed.length > 0 ? newsFeed.map((item, i) => (
+                                {forecastData?.newsFeed && forecastData.newsFeed.length > 0 ? forecastData.newsFeed.map((item, i) => (
                                     <div key={i}>
                                         <a href={item.uri} target="_blank" rel="noopener noreferrer" className="font-bold text-cyan-200 hover:underline">{item.title}</a>
                                         <p className="text-cyan-400/80 text-xs mt-1">{item.summary}</p>
@@ -253,7 +258,7 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
                 </div>
                  <div className="lg:col-span-2 flex flex-col gap-6 min-h-0">
                     <Panel title="Active Region Threat Matrix" className="flex-grow" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>}>
-                         {isLoading.matrix ? <Loader text="ASSESSING THREATS..." /> : error.matrix ? <p className="text-red-400">{error.matrix}</p> : threatMatrix && threatMatrix.length > 0 ? (
+                         {isLoading.matrix ? <Loader text="ASSESSING THREATS..." /> : error.matrix ? <p className="text-red-400">{error.matrix}</p> : forecastData?.threatMatrix && forecastData.threatMatrix.length > 0 ? (
                             <table className="w-full text-left text-xs">
                                 <thead className="text-cyan-300 uppercase">
                                     <tr>
@@ -264,7 +269,7 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-cyan-800/60">
-                                    {threatMatrix.map(item => (
+                                    {forecastData.threatMatrix.map(item => (
                                         <tr key={item.region}>
                                             <td className="p-2 font-bold">{item.region}</td>
                                             <td className="p-2">{item.magneticClass}</td>
@@ -282,9 +287,9 @@ export const SolarForecast: React.FC<{ data: SimulatedData | null; processState:
                         </button>
                          {isLoading.sevenDay && <div className="p-4 mt-4 bg-gray-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-lg"><Loader text="GENERATING LONG-RANGE FORECAST..." /></div>}
                          {error.sevenDay && <p className="text-red-400 mt-4">{error.sevenDay}</p>}
-                         {sevenDayForecast && (
+                         {forecastData?.sevenDayForecast && (
                             <Panel title="7-Day Solar Weather Outlook" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} className="mt-4">
-                                <MarkdownRenderer content={sevenDayForecast} />
+                                <MarkdownRenderer content={forecastData.sevenDayForecast} />
                             </Panel>
                          )}
                     </div>

@@ -1,12 +1,13 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { Chat } from '@google/genai';
 import { initializeChat, sendMessage } from '../services/geminiService';
 import { generateSpeech, decode, decodeAudioData } from '../services/ttsService';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, AiDataCache } from '../types';
 
 interface AiAdvisorProps {
   dataSummary: string;
+  chatHistory: ChatMessage[] | undefined;
+  updateAiCache: (updates: Partial<AiDataCache>) => void;
 }
 
 const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
@@ -99,10 +100,9 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
 };
 
 
-export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, updateAiCache }) => {
   const [userInput, setUserInput] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [chatSession, setChatSession] = useState<Chat | null>(null);
   
@@ -117,7 +117,6 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
   const handleInitialQuery = useCallback(async (summary: string) => {
     setIsLoading(true);
     setError('');
-    setChatHistory([]);
     
     const session = initializeChat();
     setChatSession(session);
@@ -126,16 +125,12 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
       const stream = await sendMessage(session, `Analyze the following data: ${summary}`);
       
       let currentResponse = '';
-      setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: '' }] }]);
+      updateAiCache({ advisorChatHistory: [{ role: 'model', parts: [{ text: '' }] }] });
 
       for await (const chunk of stream) {
         const textChunk = chunk.text;
         currentResponse += textChunk;
-        setChatHistory(prev => {
-            const newHistory = [...prev];
-            newHistory[newHistory.length - 1] = { role: 'model', parts: [{ text: currentResponse }] };
-            return newHistory;
-        });
+        updateAiCache({ advisorChatHistory: [{ role: 'model', parts: [{ text: currentResponse }] }] });
       }
     } catch (err) {
       setError('Connection to AI Advisor failed. Check console for details.');
@@ -143,39 +138,56 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [updateAiCache]);
   
   useEffect(() => {
-    handleInitialQuery(dataSummary);
-  }, [dataSummary, handleInitialQuery]);
+    // Only fetch initial analysis if a summary is provided and no chat history exists
+    if (dataSummary && (!chatHistory || chatHistory.length === 0)) {
+        handleInitialQuery(dataSummary);
+    } else if (!dataSummary) {
+        // If there's no data summary, we shouldn't have a chat session.
+        setChatSession(null);
+    } else if (dataSummary && !chatSession) {
+        // Re-initialize session if summary exists but session doesn't (e.g., after cache reset)
+        setChatSession(initializeChat());
+    }
+  }, [dataSummary, chatHistory, handleInitialQuery, chatSession]);
   
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim() || isLoading || !chatSession) return;
 
     const newUserMessage: ChatMessage = { role: 'user', parts: [{ text: userInput }] };
-    setChatHistory(prev => [...prev, newUserMessage]);
+    const historyWithUserMsg = [...(chatHistory || []), newUserMessage];
+    updateAiCache({ advisorChatHistory: historyWithUserMsg });
+
     setUserInput('');
     setIsLoading(true);
 
     try {
         const stream = await sendMessage(chatSession, userInput);
         let currentResponse = '';
-        setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: '' }] }]);
+        
+// Fix: Explicitly type the new message object to prevent type widening of the 'role' property.
+const placeholderMessage: ChatMessage = { role: 'model', parts: [{ text: '' }] };
+const historyWithPlaceholder = [...historyWithUserMsg, placeholderMessage];
+        updateAiCache({ advisorChatHistory: historyWithPlaceholder });
 
         for await (const chunk of stream) {
             const textChunk = chunk.text;
             currentResponse += textChunk;
-            setChatHistory(prev => {
-                const newHistory = [...prev];
-                newHistory[newHistory.length - 1] = { role: 'model', parts: [{ text: currentResponse }] };
-                return newHistory;
-            });
+            // Fix: Explicitly type the new message object to prevent type widening.
+const newModelMessage: ChatMessage = { role: 'model', parts: [{ text: currentResponse }] };
+const newHistory = [...historyWithUserMsg, newModelMessage];
+            updateAiCache({ advisorChatHistory: newHistory });
         }
     } catch (err) {
         setError('Connection to AI Advisor failed.');
         console.error(err);
-        setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: 'Error: Could not retrieve response.' }] }]);
+        const currentHistoryOnError = chatHistory || [];
+        // Fix: Explicitly type the new error message object.
+const errorResponseMessage: ChatMessage = { role: 'model', parts: [{ text: 'Error: Could not retrieve response.' }] };
+updateAiCache({ advisorChatHistory: [...currentHistoryOnError, errorResponseMessage] });
     } finally {
         setIsLoading(false);
     }
@@ -186,18 +198,18 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
     <div className="p-4 bg-black/30 rounded-lg border border-cyan-800/60 min-h-[16rem] flex flex-col">
       <h4 className="font-orbitron text-sm text-cyan-300 mb-2">AI MISSION ADVISOR</h4>
       <div ref={chatContainerRef} className="flex-grow overflow-y-auto text-sm text-gray-300 leading-relaxed font-mono pr-2 space-y-4">
-        {chatHistory.map((msg, index) => (
+        {(chatHistory || []).map((msg, index) => (
            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`p-3 rounded-lg max-w-sm relative ${msg.role === 'user' ? 'bg-cyan-900/50' : 'bg-gray-800/50'}`}>
                     <div className="whitespace-pre-wrap">
                         {msg.parts[0].text}
-                        {isLoading && index === chatHistory.length - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 animate-pulse"></span>}
+                        {isLoading && index === (chatHistory?.length ?? 0) - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 animate-pulse"></span>}
                     </div>
-                    {msg.role === 'model' && !isLoading && <AudioPlayer textContent={msg.parts[0].text} />}
+                    {msg.role === 'model' && !isLoading && msg.parts[0].text && <AudioPlayer textContent={msg.parts[0].text} />}
                 </div>
            </div>
         ))}
-         {chatHistory.length === 0 && isLoading && <p className="text-cyan-400 animate-pulse">Receiving transmission...</p>}
+         {(!chatHistory || chatHistory.length === 0) && isLoading && <p className="text-cyan-400 animate-pulse">Receiving transmission...</p>}
          {error && <p className="text-red-400 whitespace-pre-wrap">{error}</p>}
       </div>
       
@@ -208,12 +220,12 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary }) => {
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 placeholder="Ask a follow-up question..."
-                disabled={isLoading}
+                disabled={isLoading || !chatSession}
                 className="w-full bg-gray-900/70 border border-cyan-700/60 rounded-md px-3 py-2 text-sm text-cyan-200 placeholder-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition-all duration-200"
             />
             <button
                 type="submit"
-                disabled={isLoading || !userInput.trim()}
+                disabled={isLoading || !userInput.trim() || !chatSession}
                 className="px-4 py-2 font-orbitron text-sm rounded-md border-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-500/20 border-cyan-400 text-cyan-300 hover:enabled:bg-cyan-400 hover:enabled:text-gray-900"
             >
                 SEND

@@ -106,3 +106,13 @@ export interface MissionData {
     log: string;
     metrics: MissionMetrics | null;
 }
+
+// Central cache for all AI-generated data
+export interface AiDataCache {
+  advisorChatHistory: ChatMessage[];
+  missionData: MissionData | null;
+  stormProbability: number | null;
+  threatMatrix: ThreatMatrixItem[] | null;
+  newsFeed: NewsItem[] | null;
+  sevenDayForecast: string | null;
+}
