@@ -1,0 +1,5 @@
+{
+  "name": "Solaris Orbital Observatory",
+  "description": "An interactive and futuristic dashboard for monitoring solar activity. Users can select data sources like AIA, HMI, and GOES, simulate data processing, and view stunning visualizations of the sun, all within a spaceship-like interface. An AI Mission Advisor, powered by Gemini, provides insights based on the simulated data.",
+  "requestFramePermissions": []
+}
