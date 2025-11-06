@@ -4,24 +4,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 
-// شیدر پیشرفته برای سطح خورشید با استفاده از نویز سیمپلکس و حرکت براونی کسری
-const sunVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const sunFragmentShader = `
-  uniform float time;
-  varying vec2 vUv;
-  varying vec3 vNormal;
-
-  // Simplex Noise 3D
-  // Author: Stefan Gustavson
+// --- NOISE FUNCTIONS (Used by multiple shaders) ---
+const noiseFunctions = `
   vec4 permute(vec4 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
   vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
   float snoise(vec3 v) {
@@ -66,52 +50,7 @@ const sunFragmentShader = `
     m = m * m;
     return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
   }
-
-  // Fractional Brownian Motion
-  float fbm(vec3 p) {
-    float f = 0.0;
-    float amp = 0.5;
-    float freq = 2.0;
-    for (int i = 0; i < 6; i++) {
-        f += amp * snoise(p * freq);
-        amp *= 0.5;
-        freq *= 2.0;
-    }
-    return f;
-  }
-
-  void main() {
-    float noise = fbm(vec3(vUv * 3.0, time * 0.1));
-    vec3 baseColor = vec3(1.0, 0.5, 0.0);
-    vec3 highlightColor = vec3(1.0, 1.0, 0.0);
-    
-    float intensity = 1.0 + 2.0 * noise;
-    vec3 color = mix(baseColor, highlightColor, intensity);
-    
-    // افزودن لکه‌های خورشیدی
-    float sunspotNoise = snoise(vec3(vUv * 10.0, time * 0.05));
-    if (sunspotNoise > 0.6) {
-      color = mix(color, vec3(0.8, 0.3, 0.0), (sunspotNoise - 0.6) / 0.4);
-    }
-
-    gl_FragColor = vec4(color, 1.0);
-  }
-`;
-
-// شیدر پیشرفته برای تاج خورشیدی با افکت فرنل
-const coronaVertexShader = `
-  varying vec3 vNormal;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-const coronaFragmentShader = `
-  uniform float time;
-  varying vec3 vNormal;
-  
-  // Simplex Noise 2D
-  float snoise(vec2 v) {
+   float snoise2d(vec2 v) {
     const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
     vec2 i  = floor(v + dot(v, C.yy));
     vec2 x0 = v - i + dot(i, C.xx);
@@ -133,24 +72,160 @@ const coronaFragmentShader = `
     g.yz = a0.yz * vec2(x1.x, x2.x) + h.yz * vec2(x1.y, x2.y);
     return 130.0 * dot(m, g);
   }
-
-  void main() {
-    float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-    float noise = 0.5 + 0.5 * snoise(vNormal.xy * 5.0 + time * 0.1);
-    gl_FragColor = vec4(1.0, 0.6, 0.0, 1.0) * intensity * noise;
+  float fbm(vec3 p) {
+    float f = 0.0;
+    float amp = 0.5;
+    float freq = 2.0;
+    for (int i = 0; i < 6; i++) {
+        f += amp * snoise(p * freq);
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    return f;
   }
 `;
 
+// --- SUN SHADERS ---
+const sunVertexShader = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const sunFragmentShader = `
+  uniform float time;
+  uniform float flareIntensity;
+  uniform vec2 activeRegionCoords;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  
+  ${noiseFunctions}
+
+  void main() {
+    // Limb darkening
+    float viewAngle = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
+    float limbFactor = smoothstep(0.0, 0.6, 1.0 - viewAngle);
+    // Base texture: Granulation cells
+    float granulation = fbm(vec3(vUv * 8.0, time * 0.2));
+    // Sunspots and active regions
+    float spots = snoise(vec3(vUv * 15.0, time * 0.05));
+    float spotMask = smoothstep(0.4, 0.8, spots);
+    // Define the active region
+    float distToActiveRegion = distance(vUv, activeRegionCoords);
+    float activeRegionMask = 1.0 - smoothstep(0.0, 0.15, distToActiveRegion);
+    // More spots in the active region
+    spotMask = max(spotMask, activeRegionMask * 0.8);
+    // Base colors
+    vec3 baseColor = vec3(1.0, 0.35, 0.0);
+    vec3 spotColor = vec3(0.6, 0.15, 0.0);
+    vec3 faculaeColor = vec3(1.0, 0.9, 0.6); // Bright regions near the limb
+    // Mix colors
+    vec3 color = mix(baseColor, spotColor, spotMask);
+    color += granulation * 0.2;
+    // Add bright faculae near the limb
+    float faculae = snoise(vec3(vUv * 25.0, time * 0.1)) * (1.0 - limbFactor) * 0.8;
+    color = mix(color, faculaeColor, smoothstep(0.5, 0.7, faculae));
+    // Flare brightening in the active region
+    color += faculaeColor * flareIntensity * activeRegionMask * 2.0;
+    // Final color with limb darkening
+    gl_FragColor = vec4(color * limbFactor, 1.0);
+  }
+`;
+
+// --- CORONA SHADERS ---
+const coronaVertexShader = `
+  varying vec3 vNormal;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const coronaFragmentShader = `
+  uniform float time;
+  varying vec3 vNormal;
+  ${noiseFunctions.replace('snoise(vec3 v)', 'snoise3d(vec3 v)').replace('float snoise', 'float snoise2d')}
+  
+  void main() {
+    float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+    vec2 distortedUV = vNormal.xy * 8.0 + time * 0.05;
+    distortedUV.y *= 1.5;
+    float noise = 0.5 + 0.5 * snoise2d(distortedUV);
+    gl_FragColor = vec4(1.0, 0.6, 0.2, 1.0) * intensity * noise;
+  }
+`;
+
+// --- MAGNETIC LOOP SHADERS ---
+const magneticLoopVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const magneticLoopFragmentShader = `
+  uniform float time;
+  uniform float brightness;
+  varying vec2 vUv;
+  ${noiseFunctions.replace('snoise(vec3 v)', 'snoise3d(vec3 v)').replace('float snoise', 'float snoise2d')}
+
+  void main() {
+    float noise = snoise2d(vec2(vUv.x * 2.0, vUv.y * 20.0 - time * 2.0));
+    float intensity = smoothstep(0.4, 0.6, noise);
+    vec3 color = vec3(1.0, 0.5, 0.2) * intensity * brightness;
+    float fade = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 2.0);
+    gl_FragColor = vec4(color, fade * intensity * brightness * 0.8);
+  }
+`;
+
+// --- PARTICLE SHADERS ---
+const particleVertexShader = `
+  uniform float time;
+  uniform float duration;
+  attribute vec3 velocity;
+  attribute float startTime;
+  varying float vOpacity;
+  
+  void main() {
+    float elapsedTime = time - startTime;
+    vOpacity = 0.0;
+    if (elapsedTime > 0.0 && elapsedTime < duration) {
+      vec3 newPosition = position + velocity * elapsedTime;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+      gl_PointSize = 3.0 * (1.0 - (elapsedTime / duration));
+      vOpacity = 0.8 * (1.0 - (elapsedTime / duration));
+    } else {
+      gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
+    }
+  }
+`;
+
+const particleFragmentShader = `
+  varying float vOpacity;
+  void main() {
+    if (vOpacity <= 0.0) {
+      discard;
+    }
+    gl_FragColor = vec4(1.0, 0.7, 0.3, vOpacity);
+  }
+`;
 
 export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActive }) => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const flareRef = useRef<THREE.Mesh | null>(null);
+  const sunMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const loopMaterialsRef = useRef<THREE.ShaderMaterial[]>([]);
+  const flareLightRef = useRef<THREE.PointLight | null>(null);
+  const particleMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const flareStartTimeRef = useRef<number>(-1);
+  const animationFrameIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (!mountRef.current) return;
     const currentMount = mountRef.current;
     
-    // راه‌اندازی صحنه
+    // Scene Setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
     camera.position.z = 5;
@@ -158,17 +233,23 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     currentMount.appendChild(renderer.domElement);
     
-    // خورشید
+    // Sun
+    const activeRegionCoords = new THREE.Vector2(0.65, 0.65);
     const sunGeometry = new THREE.SphereGeometry(2, 64, 64);
     const sunMaterial = new THREE.ShaderMaterial({
-      uniforms: { time: { value: 0.0 } },
+      uniforms: {
+        time: { value: 0.0 },
+        flareIntensity: { value: 0.0 },
+        activeRegionCoords: { value: activeRegionCoords },
+      },
       vertexShader: sunVertexShader,
       fragmentShader: sunFragmentShader,
     });
+    sunMaterialRef.current = sunMaterial;
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
     scene.add(sun);
     
-    // تاج خورشیدی
+    // Corona
     const coronaGeometry = new THREE.SphereGeometry(2.2, 64, 64);
     const coronaMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0.0 } },
@@ -180,7 +261,52 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     const corona = new THREE.Mesh(coronaGeometry, coronaMaterial);
     scene.add(corona);
 
-    // ستاره‌ها
+    // Magnetic Field Loops
+    const loopsGroup = new THREE.Group();
+    const loopMaterials: THREE.ShaderMaterial[] = [];
+    const numLoops = 7;
+    for (let i = 0; i < numLoops; i++) {
+        const height = Math.random() * 0.5 + 0.2;
+        const width = Math.random() * 0.3 + 0.2;
+        const angle = (Math.random() - 0.5) * Math.PI * 0.5;
+
+        const loopCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(width / 2, height, 0),
+            new THREE.Vector3(width, 0, 0),
+        ]);
+
+        const loopGeometry = new THREE.TubeGeometry(loopCurve, 32, 0.01 + Math.random() * 0.02, 8, false);
+        const loopMaterial = new THREE.ShaderMaterial({
+            vertexShader: magneticLoopVertexShader,
+            fragmentShader: magneticLoopFragmentShader,
+            uniforms: {
+                time: { value: 0.0 },
+                brightness: { value: 1.5 },
+            },
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        loopMaterials.push(loopMaterial);
+
+        const loopMesh = new THREE.Mesh(loopGeometry, loopMaterial);
+        loopMesh.rotation.z = angle;
+        loopsGroup.add(loopMesh);
+    }
+    loopMaterialsRef.current = loopMaterials;
+
+    // Position and orient the whole group of loops
+    const position = new THREE.Vector3().setFromSphericalCoords(
+        2.01, // radius just above the sun surface
+        Math.PI * (0.5 - activeRegionCoords.y),
+        Math.PI * (activeRegionCoords.x - 0.5) * 2
+    );
+    loopsGroup.position.copy(position);
+    loopsGroup.lookAt(new THREE.Vector3(0, 0, 0));
+    sun.add(loopsGroup); // Add to sun so it rotates with it
+
+    // Stars background
     const starGeometry = new THREE.BufferGeometry();
     const starVertices = [];
     for (let i = 0; i < 10000; i++) {
@@ -194,21 +320,54 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     const stars = new THREE.Points(starGeometry, starMaterial);
     scene.add(stars);
 
-    // شراره خورشیدی
-    const flareCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(2, 0, 0),
-      new THREE.Vector3(3, 1, 0),
-      new THREE.Vector3(4, 0, 0),
-      new THREE.Vector3(3, -1.5, 0),
-      new THREE.Vector3(5, -2, 0)
-    ]);
-    const flareGeometry = new THREE.TubeGeometry(flareCurve, 20, 0.05, 8, false);
-    const flareMaterial = new THREE.MeshBasicMaterial({ color: 0xfffbb3, transparent: true, opacity: 0 });
-    const flare = new THREE.Mesh(flareGeometry, flareMaterial);
-    flareRef.current = flare;
-    scene.add(flare);
+    // Dynamic Flare Light
+    const flareLight = new THREE.PointLight(0xffaa44, 0, 10, 2);
+    flareLight.position.set(1.5, 1.5, 1.5);
+    flareLightRef.current = flareLight;
+    scene.add(flareLight);
+
+    // Flare Particle System
+    const particleCount = 5000;
+    const particleGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
+    const startTimes = new Float32Array(particleCount);
+    const basePosition = new THREE.Vector3().setFromSphericalCoords(
+        2.1,
+        Math.PI * (0.5 - activeRegionCoords.y),
+        Math.PI * (activeRegionCoords.x - 0.5) * 2
+    );
+    for (let i = 0; i < particleCount; i++) {
+      positions.set([basePosition.x, basePosition.y, basePosition.z], i * 3);
+      const theta = (Math.PI / 2 - Math.PI * (0.5 - activeRegionCoords.y)) + (Math.random() - 0.5) * 0.2;
+      const phi = (Math.PI * (activeRegionCoords.x - 0.5) * 2) + (Math.random() - 0.5) * 0.2;
+      const speed = Math.random() * 2 + 1;
+      const velocity = new THREE.Vector3();
+      velocity.setFromSphericalCoords(1, theta, phi);
+      velocity.multiplyScalar(speed);
+      velocities.set([velocity.x, velocity.y, velocity.z], i * 3);
+      startTimes[i] = Math.random() * 1.0; // Stagger particle start times
+    }
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+    particleGeometry.setAttribute('startTime', new THREE.BufferAttribute(startTimes, 1));
     
-    // پست-پراسسینگ: افکت درخشش
+    const particleMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0.0 },
+        duration: { value: 4.0 },
+      },
+      vertexShader: particleVertexShader,
+      fragmentShader: particleFragmentShader,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    particleMaterialRef.current = particleMaterial;
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    scene.add(particles);
+    
+    // Post-processing: Bloom effect
     const renderScene = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(new THREE.Vector2(currentMount.clientWidth, currentMount.clientHeight), 1.5, 0.4, 0.85);
     bloomPass.threshold = 0.2;
@@ -219,18 +378,14 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     composer.addPass(renderScene);
     composer.addPass(bloomPass);
 
-
     const clock = new THREE.Clock();
-    let animationFrameId: number;
     
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+      animationFrameIdRef.current = requestAnimationFrame(animate);
 
-      // منطق ریسپانسیو رندر
-      const canvas = renderer.domElement;
       const width = currentMount.clientWidth;
       const height = currentMount.clientHeight;
-      if (canvas.width !== width || canvas.height !== height) {
+      if (renderer.domElement.width !== width || renderer.domElement.height !== height) {
         renderer.setSize(width, height, false);
         composer.setSize(width, height);
         camera.aspect = width / height;
@@ -238,53 +393,85 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
       }
 
       const delta = clock.getDelta();
+      const time = clock.getElapsedTime();
+
       sun.rotation.y += 0.05 * delta;
-      sunMaterial.uniforms.time.value += delta;
-      coronaMaterial.uniforms.time.value += delta;
+      sunMaterial.uniforms.time.value = time;
+      coronaMaterial.uniforms.time.value = time;
+      loopMaterials.forEach(mat => mat.uniforms.time.value = time);
       
+      if (flareStartTimeRef.current > 0) {
+        const flareTime = time - flareStartTimeRef.current;
+        if (flareTime < 4.0) {
+          particleMaterialRef.current!.uniforms.time.value = flareTime;
+        } else {
+          flareStartTimeRef.current = -1;
+        }
+      }
+
       composer.render();
     };
     animate();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      currentMount.removeChild(renderer.domElement);
+      cancelAnimationFrame(animationFrameIdRef.current);
+      if (currentMount && renderer.domElement) {
+        currentMount.removeChild(renderer.domElement);
+      }
       sunGeometry.dispose();
       sunMaterial.dispose();
       coronaGeometry.dispose();
       coronaMaterial.dispose();
       starGeometry.dispose();
       starMaterial.dispose();
-      flareGeometry.dispose();
-      flareMaterial.dispose();
+      particleGeometry.dispose();
+      particleMaterial.dispose();
+      loopsGroup.children.forEach((child: any) => {
+        if(child.geometry) child.geometry.dispose();
+        if(child.material) child.material.dispose();
+      });
     };
   }, []);
   
-  // مدیریت انیمیشن شراره
   useEffect(() => {
-    if (flareRef.current) {
-        const material = flareRef.current.material as THREE.MeshBasicMaterial;
-        let opacity = material.opacity;
+    let flareAnimationId: number;
+    if (isFlareActive) {
+      if (sunMaterialRef.current && loopMaterialsRef.current.length > 0 && flareLightRef.current && particleMaterialRef.current) {
+        const sunMaterial = sunMaterialRef.current;
+        const loopMaterials = loopMaterialsRef.current;
+        const flareLight = flareLightRef.current;
         
-        const animateFlare = (targetOpacity: number, speed: number) => {
-            if (opacity < targetOpacity) {
-                opacity = Math.min(opacity + speed, targetOpacity);
-            } else if (opacity > targetOpacity) {
-                opacity = Math.max(opacity - speed, targetOpacity);
-            }
-            material.opacity = opacity;
+        flareStartTimeRef.current = performance.now() / 1000;
+        particleMaterialRef.current.uniforms.time.value = 0;
+
+        let flareTime = 0;
+        const duration = 0.5; // seconds for the main flash
+
+        const animateFlare = () => {
+            flareTime += 1 / 60; // Assuming 60fps
+            const progress = Math.min(flareTime / duration, 1.0);
+            const intensity = Math.sin(progress * Math.PI) * 5.0; 
             
-            if (material.opacity !== targetOpacity) {
-                requestAnimationFrame(() => animateFlare(targetOpacity, speed));
+            sunMaterial.uniforms.flareIntensity.value = intensity;
+            flareLight.intensity = intensity;
+            loopMaterials.forEach(mat => {
+                mat.uniforms.brightness.value = 1.5 + intensity * 2.0;
+            });
+            
+            if (progress < 1.0) {
+                flareAnimationId = requestAnimationFrame(animateFlare);
+            } else {
+                sunMaterial.uniforms.flareIntensity.value = 0.0;
+                flareLight.intensity = 0.0;
+                loopMaterials.forEach(mat => {
+                    mat.uniforms.brightness.value = 1.5;
+                });
             }
         };
-
-        if (isFlareActive) {
-            animateFlare(1, 0.05);
-        } else {
-            animateFlare(0, 0.01);
-        }
+        animateFlare();
+      }
     }
+    return () => cancelAnimationFrame(flareAnimationId);
   }, [isFlareActive]);
 
   return <div ref={mountRef} className="w-full h-full" />;
