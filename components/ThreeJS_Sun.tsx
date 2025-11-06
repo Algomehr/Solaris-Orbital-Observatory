@@ -138,22 +138,63 @@ const sunFragmentShader = `
 // --- CORONA SHADERS ---
 const coronaVertexShader = `
   varying vec3 vNormal;
+  varying vec3 vWorldPosition;
   void main() {
     vNormal = normalize(normalMatrix * normal);
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const coronaFragmentShader = `
   uniform float time;
   varying vec3 vNormal;
-  ${noiseFunctions.replace('snoise(vec3 v)', 'snoise3d(vec3 v)').replace('float snoise', 'float snoise2d')}
+  varying vec3 vWorldPosition;
   
+  ${noiseFunctions}
+
+  float fbm_corona(vec3 p) {
+    float f = 0.0;
+    float amp = 0.5;
+    float freq = 4.0;
+    for (int i = 0; i < 5; i++) {
+        f += amp * snoise(p * freq);
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    return f;
+  }
+
   void main() {
-    float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-    vec2 distortedUV = vNormal.xy * 8.0 + time * 0.05;
-    distortedUV.y *= 1.5;
-    float noise = 0.5 + 0.5 * snoise2d(distortedUV);
-    gl_FragColor = vec4(1.0, 0.6, 0.2, 1.0) * intensity * noise;
+    // Basic falloff from the sun's limb
+    float rim = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
+    
+    // Large-scale streamers
+    float angle = atan(vWorldPosition.y, vWorldPosition.x);
+    float streamerShape = snoise(vec3(angle * 5.0, time * 0.1, 0.0));
+    streamerShape = pow(smoothstep(0.3, 0.7, streamerShape), 2.0);
+    
+    // Make streamers extend further out
+    float streamerExtension = streamerShape * 0.4;
+    float baseGlow = pow(smoothstep(0.0, 0.6 + streamerExtension, rim), 3.0);
+    
+    // Fibrous, wispy details stretched radially
+    float radialDist = length(vWorldPosition.xy);
+    vec3 noiseCoords = vec3(
+        angle * 10.0, 
+        radialDist * 4.0, 
+        time * 0.2
+    );
+    float wisps = fbm_corona(noiseCoords);
+    wisps = smoothstep(0.4, 0.6, wisps);
+    
+    // Combine components
+    float finalIntensity = baseGlow * (0.3 + streamerShape * 0.7) * wisps;
+    
+    // Color
+    vec3 coronaColor = vec3(1.0, 0.7, 0.4);
+    
+    gl_FragColor = vec4(coronaColor, finalIntensity * 1.5);
   }
 `;
 
@@ -215,6 +256,7 @@ const particleFragmentShader = `
 export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActive }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sunMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const coronaMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
   const loopMaterialsRef = useRef<THREE.ShaderMaterial[]>([]);
   const flareLightRef = useRef<THREE.PointLight | null>(null);
   const particleMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -250,14 +292,16 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     scene.add(sun);
     
     // Corona
-    const coronaGeometry = new THREE.SphereGeometry(2.2, 64, 64);
+    const coronaGeometry = new THREE.SphereGeometry(2.8, 64, 64); // Slightly larger for better effect
     const coronaMaterial = new THREE.ShaderMaterial({
       uniforms: { time: { value: 0.0 } },
       vertexShader: coronaVertexShader,
       fragmentShader: coronaFragmentShader,
       blending: THREE.AdditiveBlending,
       side: THREE.BackSide,
+      transparent: true,
     });
+    coronaMaterialRef.current = coronaMaterial;
     const corona = new THREE.Mesh(coronaGeometry, coronaMaterial);
     scene.add(corona);
 
@@ -371,7 +415,7 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
     const renderScene = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(new THREE.Vector2(currentMount.clientWidth, currentMount.clientHeight), 1.5, 0.4, 0.85);
     bloomPass.threshold = 0.2;
-    bloomPass.strength = 1.2;
+    bloomPass.strength = 1.0; // Slightly reduced strength to appreciate corona details
     bloomPass.radius = 0.5;
 
     const composer = new EffectComposer(renderer);
@@ -396,6 +440,7 @@ export const ThreeJS_Sun: React.FC<{ isFlareActive: boolean }> = ({ isFlareActiv
       const time = clock.getElapsedTime();
 
       sun.rotation.y += 0.05 * delta;
+      corona.rotation.y += 0.05 * delta;
       sunMaterial.uniforms.time.value = time;
       coronaMaterial.uniforms.time.value = time;
       loopMaterials.forEach(mat => mat.uniforms.time.value = time);
