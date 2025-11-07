@@ -191,28 +191,14 @@ export const MissionControl: React.FC<{
         // Clear previous mission data from cache while generating a new one
         updateAiCache({ missionData: null });
 
-        const systemInstruction = `
-            You are 'SOLARIS', an AI Mission Advisor. Your task is to generate a flight plan and key mission metrics for a solar observatory satellite.
-            
-            The response MUST be a single JSON object. This object should contain two top-level keys: "flightPlanLog" and "missionMetrics".
-            
-            1.  "flightPlanLog": A string containing a detailed, realistic flight plan in Markdown format. The plan should include these sections: ## Mission Overview, ## Flight Plan Details (with phases for burn, station keeping, etc.), and ## Risk Assessment.
-            
-            2.  "missionMetrics": A JSON object with the following structure:
-                -   "deltaV": An object with "insertion", "stationKeeping", and "returnBurn" keys, each with a numerical value in m/s.
-                -   "fuelConsumption": A number representing the total percentage of fuel used.
-                -   "maxRadiationExposure": A number in mSv.
-                -   "telemetry": An object with baseline "altitude" (km), "velocity" (km/s), "signalStrength" (dBm), and "temperature" (°C).
-        `;
-
-        const userPrompt = `
-            Generate the mission data for the following parameters:
-            - Mission Name: ${missionName}
-            - Mission Type: ${missionType}
-            - Duration: ${duration} hours
-            - Orbital Trajectory: ${trajectory}
-            - Mission Notes: ${notes}
-        `;
+        const systemInstruction = t('missionControl_systemInstruction');
+        const userPrompt = t('missionControl_userPrompt', {
+            missionName,
+            missionType,
+            duration,
+            trajectory,
+            notes
+        });
 
         try {
             const response = await ai.models.generateContent({

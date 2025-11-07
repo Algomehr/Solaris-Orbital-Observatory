@@ -40,11 +40,14 @@ export async function decodeAudioData(
 }
 
 
-export const generateSpeech = async (text: string): Promise<string> => {
+export const generateSpeech = async (text: string, language: 'en' | 'fa'): Promise<string> => {
   try {
+    // Instruct the model which language to speak
+    const prompt = language === 'fa' ? `این متن را به فارسی بخوان: ${text}` : text;
+    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {

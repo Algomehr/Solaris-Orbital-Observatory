@@ -6,14 +6,15 @@ import { StatusFeed } from './components/StatusFeed';
 import { DataDashboard } from './components/DataDashboard';
 import { SolarFlare3D } from './components/SolarFlare3D';
 import { MultiSpectrumView } from './components/HistoricalTimelapse';
+import { CoronalDynamics } from './components/CoronalDynamics';
 import { MissionControl } from './components/MissionControl';
 import { SolarForecast } from './components/SolarForecast';
 import type { InstrumentSelection, AiaWavelength, SimulatedData, ProcessState, AiDataCache } from './types';
 import { AIA_WAVELENGTHS } from './constants';
-import { fetchGoesData, generateHmiData, generateSummary, generateSolarWindData, generateProtonFluxData, generateKpIndexData } from './services/simulationService';
+import { fetchGoesData, generateHmiData, generateSummary, generateSolarWindData, generateProtonFluxData, generateKpIndexData, generateCoronalHoleData, generateFilamentData, generateRadioBurstData, generateImfBzData } from './services/simulationService';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 
-type Tab = 'observatory' | 'flareAnalysis' | 'multiSpectrum' | 'missionControl' | 'forecast';
+type Tab = 'observatory' | 'flareAnalysis' | 'multiSpectrum' | 'coronalDynamics' | 'missionControl' | 'forecast';
 
 function AppContent() {
   const { t } = useLanguage();
@@ -73,12 +74,14 @@ function AppContent() {
       ...(selections.AIA ? [{ delay: 1500, message: `Requesting AIA data for ${selectedAiaWavelength.name}Å...` }] : []),
       ...(selections.HMI ? [{ delay: 1500, message: "Downloading HMI magnetogram..." }] : []),
       ...(selections.GOES ? [{ delay: 1500, message: "Fetching live GOES X-ray flux data..." }] : []),
+      { delay: 1000, message: "Synchronizing with Radio Spectrometer Array..." },
       { delay: 2000, message: "Data stream inbound. Beginning preprocessing..." },
       ...(selections.AIA ? [{ delay: 1200, message: "Calibrating AIA spectral imagery..." }] : []),
       ...(selections.HMI ? [{ delay: 1200, message: "Analyzing magnetic field topology..." }] : []),
       ...(selections.GOES ? [{ delay: 1200, message: "Cross-referencing flare events..." }] : []),
-      { delay: 800, message: "Querying ACE & DSCOVR for solar wind data..." },
+      { delay: 800, message: "Querying ACE & DSCOVR for solar wind & IMF data..." },
       { delay: 800, message: "Assessing geomagnetic Kp-index..." },
+      { delay: 1000, message: "Mapping coronal structures..." },
       { delay: 2500, message: "Generating visualizations..." },
     ];
 
@@ -102,9 +105,17 @@ function AppContent() {
         const solarWindData = generateSolarWindData();
         const protonFluxData = generateProtonFluxData();
         const kpIndexData = generateKpIndexData();
+        const imfBzData = generateImfBzData();
         addStatusMessage('SUCCESS: Space environment analysis complete.');
+        
+        addStatusMessage('Analyzing coronal dynamics...');
+        const coronalHoleData = generateCoronalHoleData();
+        const filamentData = generateFilamentData();
+        const radioBurstData = generateRadioBurstData(goesData); // Pass GOES data to correlate bursts
+        addStatusMessage('SUCCESS: Coronal dynamics analysis complete.');
 
-        const summary = generateSummary(selections, selectedAiaWavelength, hmiData, goesData, solarWindData, protonFluxData, kpIndexData);
+
+        const summary = generateSummary(selections, selectedAiaWavelength, hmiData, goesData, solarWindData, protonFluxData, kpIndexData, coronalHoleData, filamentData, imfBzData);
         
         setProcessedData({
           selections,
@@ -115,6 +126,10 @@ function AppContent() {
           solarWindData,
           protonFluxData,
           kpIndexData,
+          coronalHoleData,
+          filamentData,
+          radioBurstData,
+          imfBzData,
         });
         addStatusMessage("Data processing complete. Standby for output.");
       } catch (error) {
@@ -126,7 +141,10 @@ function AppContent() {
         const solarWindData = generateSolarWindData();
         const protonFluxData = generateProtonFluxData();
         const kpIndexData = generateKpIndexData();
-        const summary = generateSummary(selections, selectedAiaWavelength, hmiData, undefined, solarWindData, protonFluxData, kpIndexData);
+        const coronalHoleData = generateCoronalHoleData();
+        const filamentData = generateFilamentData();
+        const imfBzData = generateImfBzData();
+        const summary = generateSummary(selections, selectedAiaWavelength, hmiData, undefined, solarWindData, protonFluxData, kpIndexData, coronalHoleData, filamentData, imfBzData);
 
         setProcessedData({
           selections,
@@ -137,6 +155,10 @@ function AppContent() {
           solarWindData,
           protonFluxData,
           kpIndexData,
+          coronalHoleData,
+          filamentData,
+          radioBurstData: [],
+          imfBzData,
         });
 
       } finally {
@@ -174,6 +196,9 @@ function AppContent() {
         </TabButton>
         <TabButton tabId="flareAnalysis" currentTab={activeTab} onClick={setActiveTab}>
           {t('tab_flareAnalysis')}
+        </TabButton>
+         <TabButton tabId="coronalDynamics" currentTab={activeTab} onClick={setActiveTab}>
+          {t('tab_coronalDynamics')}
         </TabButton>
         <TabButton tabId="multiSpectrum" currentTab={activeTab} onClick={setActiveTab}>
           {t('tab_multiSpectrum')}
@@ -233,6 +258,12 @@ function AppContent() {
         </main>
       )}
       
+      {activeTab === 'coronalDynamics' && (
+         <main className="flex-grow mt-4 min-h-0">
+            <CoronalDynamics processState={processState} data={processedData} />
+        </main>
+      )}
+
       {activeTab === 'multiSpectrum' && (
          <main className="flex-grow mt-4 min-h-0">
             <MultiSpectrumView />

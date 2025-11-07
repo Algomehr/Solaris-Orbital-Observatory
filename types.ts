@@ -40,6 +40,33 @@ export interface KpIndexData {
   level: 'Quiet' | 'Unsettled' | 'Active' | 'Minor Storm' | 'Moderate Storm' | 'Strong Storm' | 'Severe Storm' | 'Extreme Storm';
 }
 
+// Types for Coronal Dynamics Tab
+export interface CoronalHoleData {
+    id: string;
+    area: number; // in millionths of a solar hemisphere
+    maxWindSpeed: number; // km/s
+    path: string; // SVG path data for rendering
+}
+
+export interface FilamentData {
+    id: string;
+    length: number; // in arcseconds
+    stability: 'Stable' | 'Unstable' | 'Eruptive';
+    path: string; // SVG path data for rendering
+}
+
+export interface RadioBurstData {
+    time: number; // Minutes into the past 24h
+    frequency: number; // MHz
+    intensity: number; // SFU (Solar Flux Units)
+    type: 'II' | 'III';
+}
+
+export interface ImfBzDataPoint {
+    time: string;
+    bz: number; // in nT (nanoteslas)
+}
+
 export interface SimulatedData {
   selections: InstrumentSelection;
   wavelength: AiaWavelength;
@@ -49,6 +76,11 @@ export interface SimulatedData {
   solarWindData?: SolarWindData;
   protonFluxData?: ProtonFluxDataPoint[];
   kpIndexData?: KpIndexData;
+  // New data for Coronal Dynamics
+  coronalHoleData?: CoronalHoleData[];
+  filamentData?: FilamentData[];
+  radioBurstData?: RadioBurstData[];
+  imfBzData?: ImfBzDataPoint[];
 }
 
 export interface ChatMessage {

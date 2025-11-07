@@ -81,15 +81,12 @@ export const SolarForecast: React.FC<{
         setIsLoading(prev => ({ ...prev, probability: true, matrix: true }));
         setError(prev => ({ ...prev, probability: '', matrix: '' }));
 
-        const systemInstruction = `You are a space weather forecasting AI. Analyze the provided solar data summary and return a JSON object with two keys: 'stormProbability' and 'threatMatrix'.
-        - 'stormProbability': A number (0-100) representing the percentage chance of a G1 or greater geomagnetic storm in the next 48 hours.
-        - 'threatMatrix': An array of objects for each active region mentioned. Each object should have: 'region' (string), 'magneticClass' (string, e.g., 'Beta-Gamma'), 'flareProbability' (object with C, M, X keys and number values 0-100), and 'cmeRisk' (string: 'Low', 'Moderate', 'High', or 'Very High').
-        Base your forecast on the provided data. If no active regions are mentioned, return an empty array for 'threatMatrix'.`;
+        const systemInstruction = t('solarForecast_stormSystemInstruction');
         
         try {
             const response = await ai.models.generateContent({
                 model: model,
-                contents: `Analyze this data: ${summary}`,
+                contents: t('solarForecast_stormUserPrompt', { summary }),
                 config: {
                     systemInstruction,
                     responseMimeType: 'application/json',
@@ -134,7 +131,7 @@ export const SolarForecast: React.FC<{
             setIsLoading(prev => ({ ...prev, probability: false, matrix: false }));
         }
 
-    }, [forecastData, updateAiCache]);
+    }, [forecastData, updateAiCache, t]);
 
     const fetchNewsFeed = useCallback(async () => {
         if (forecastData?.newsFeed) {
@@ -146,7 +143,7 @@ export const SolarForecast: React.FC<{
         try {
             const response = await ai.models.generateContent({
                 model,
-                contents: "Summarize the top 3 latest news or official reports about solar flares, CMEs, or significant solar activity. Provide a title, a short summary for each, and the source URI.",
+                contents: t('solarForecast_newsPrompt'),
                 config: {
                     tools: [{ googleSearch: {} }]
                 }
@@ -183,7 +180,7 @@ export const SolarForecast: React.FC<{
         } finally {
             setIsLoading(prev => ({ ...prev, news: false }));
         }
-    }, [forecastData, updateAiCache]);
+    }, [forecastData, updateAiCache, t]);
 
     const fetchSevenDayForecast = async () => {
         if (!data?.summary) return;
@@ -191,14 +188,11 @@ export const SolarForecast: React.FC<{
         setError(prev => ({ ...prev, sevenDay: '' }));
         updateAiCache({ sevenDayForecast: null });
 
-         const systemInstruction = `You are a senior space weather forecaster. Based on the current solar data, generate a 7-day forecast.
-         The output should be in Markdown format.
-         For each day, provide a brief summary of expected solar activity, geomagnetic conditions, and potential for aurora sightings.
-         Start with "## 7-Day Solar Weather Outlook". For each day use a "### Day X: [Date]" format.`;
+         const systemInstruction = t('solarForecast_7daySystemInstruction');
         try {
             const response = await ai.models.generateContent({
                 model,
-                contents: `Current data: ${data.summary}`,
+                contents: t('solarForecast_7dayUserPrompt', { summary: data.summary }),
                 config: { systemInstruction },
             });
             updateAiCache({ sevenDayForecast: response.text });

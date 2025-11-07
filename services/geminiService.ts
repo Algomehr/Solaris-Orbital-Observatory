@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Chat } from "@google/genai";
 
 const API_KEY = process.env.API_KEY;
@@ -13,19 +12,7 @@ const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
 const model = 'gemini-2.5-flash';
 
-export function initializeChat(): Chat {
-  const systemInstruction = `
-    You are 'SOLARIS', the AI Mission Advisor aboard a deep space solar observatory. 
-    Your tone is professional, technical, and slightly futuristic. 
-    You will receive mission-critical solar data summaries and user queries.
-    Your responses should be concise, informative, and adhere to your persona.
-    For initial analysis, provide a report with:
-    1. A brief, high-level summary of the current solar state.
-    2. Key observations or anomalies.
-    3. Recommendations for the crew (e.g., adjust satellite orientation, prepare for high particle flux, etc.).
-    For subsequent user questions, provide direct and relevant answers based on the conversation history and the initial data provided.
-  `;
-
+export function initializeChat(systemInstruction: string): Chat {
   return ai.chats.create({
     model: model,
     config: {

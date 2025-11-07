@@ -11,7 +11,7 @@ interface AiAdvisorProps {
   updateAiCache: (updates: Partial<AiDataCache>) => void;
 }
 
-const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
+const AudioPlayer: React.FC<{ textContent: string; language: 'en' | 'fa' }> = ({ textContent, language }) => {
   const { t } = useLanguage();
   const [isAudioGenerating, setIsAudioGenerating] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -54,7 +54,7 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
     setIsAudioGenerating(true);
     setError('');
     try {
-      const base64Audio = await generateSpeech(textContent);
+      const base64Audio = await generateSpeech(textContent, language);
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
@@ -75,7 +75,7 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
     } finally {
       setIsAudioGenerating(false);
     }
-  }, [textContent, audioBuffer, isAudioPlaying, stopPlayback, t]);
+  }, [textContent, audioBuffer, isAudioPlaying, stopPlayback, t, language]);
 
   useEffect(() => {
       return () => {
@@ -103,7 +103,7 @@ const AudioPlayer: React.FC<{ textContent: string }> = ({ textContent }) => {
 
 
 export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, updateAiCache }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -121,11 +121,11 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, 
     setIsLoading(true);
     setError('');
     
-    const session = initializeChat();
+    const session = initializeChat(t('aiAdvisor_systemInstruction'));
     setChatSession(session);
     
     try {
-      const stream = await sendMessage(session, `Analyze the following data: ${summary}`);
+      const stream = await sendMessage(session, t('aiAdvisor_initialPrompt', { summary }));
       
       let currentResponse = '';
       updateAiCache({ advisorChatHistory: [{ role: 'model', parts: [{ text: '' }] }] });
@@ -141,7 +141,7 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, 
     } finally {
       setIsLoading(false);
     }
-  }, [updateAiCache]);
+  }, [updateAiCache, t]);
   
   useEffect(() => {
     // Only fetch initial analysis if a summary is provided and no chat history exists
@@ -152,9 +152,9 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ dataSummary, chatHistory, 
         setChatSession(null);
     } else if (dataSummary && !chatSession) {
         // Re-initialize session if summary exists but session doesn't (e.g., after cache reset)
-        setChatSession(initializeChat());
+        setChatSession(initializeChat(t('aiAdvisor_systemInstruction')));
     }
-  }, [dataSummary, chatHistory, handleInitialQuery, chatSession]);
+  }, [dataSummary, chatHistory, handleInitialQuery, t]);
   
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +208,7 @@ updateAiCache({ advisorChatHistory: [...currentHistoryOnError, errorResponseMess
                         {msg.parts[0].text}
                         {isLoading && index === (chatHistory?.length ?? 0) - 1 && <span className="inline-block w-2 h-4 bg-cyan-300 ml-1 rtl:mr-1 animate-pulse"></span>}
                     </div>
-                    {msg.role === 'model' && !isLoading && msg.parts[0].text && <AudioPlayer textContent={msg.parts[0].text} />}
+                    {msg.role === 'model' && !isLoading && msg.parts[0].text && <AudioPlayer textContent={msg.parts[0].text} language={language} />}
                 </div>
            </div>
         ))}
